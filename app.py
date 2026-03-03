@@ -36,10 +36,34 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- Data Handling (Local CSV for fallback) ---
+import requests
+import base64
+
+# --- Data Handling (GitHub and Local CSV) ---
+GITHUB_USER = "nabesaka499-netizen"
+GITHUB_REPO = "my-pachinko-ledger"
 DATA_FILE = "records.csv"
 
+def get_github_auth():
+    if "GITHUB_TOKEN" in st.secrets:
+        return st.secrets["GITHUB_TOKEN"]
+    return None
+
 def load_data():
+    token = get_github_auth()
+    if token:
+        # Load from GitHub
+        url = f"https://api.github.com/repos/{GITHUB_USER}/{GITHUB_REPO}/contents/{DATA_FILE}"
+        headers = {"Authorization": f"token {token}"}
+        r = requests.get(url, headers=headers)
+        if r.status_code == 200:
+            content = base64.b64decode(r.json()["content"]).decode("utf-8")
+            df = pd.read_csv(StringIO(content))
+            st.session_state.records = df
+            st.session_state.github_sha = r.json()["sha"]
+            return df
+    
+    # Fallback to local or session state
     if "records" not in st.session_state:
         try:
             st.session_state.records = pd.read_csv(DATA_FILE)
@@ -52,7 +76,31 @@ def load_data():
 
 def save_data(df):
     st.session_state.records = df
-    df.to_csv(DATA_FILE, index=False)
+    token = get_github_auth()
+    
+    if token:
+        # Save to GitHub (Commit)
+        url = f"https://api.github.com/repos/{GITHUB_USER}/{GITHUB_REPO}/contents/{DATA_FILE}"
+        headers = {"Authorization": f"token {token}"}
+        
+        # Get current SHA to update
+        sha = st.session_state.get("github_sha")
+        if not sha:
+            r = requests.get(url, headers=headers)
+            if r.status_code == 200: sha = r.json()["sha"]
+            
+        csv_content = df.to_csv(index=False)
+        data = {
+            "message": "Update records via App",
+            "content": base64.b64encode(csv_content.encode("utf-8")).decode("utf-8"),
+            "sha": sha
+        }
+        res = requests.put(url, json=data, headers=headers)
+        if res.status_code in [200, 201]:
+            st.session_state.github_sha = res.json()["content"]["sha"]
+    else:
+        # Local save fallback
+        df.to_csv(DATA_FILE, index=False)
 
 def calculate_balance(row):
     # Logic from JS: (recovery - invest_from_count) - cash_invest
