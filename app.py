@@ -201,18 +201,46 @@ elif menu == "分析 (月別/年別)":
 elif menu == "一括インポート":
     st.subheader("データの移行・取り込み")
     
-    # 1. JSON Import (from HTML App)
-    st.write("### 1. HTML版アプリからの移行 (.json)")
-    uploaded_file = st.file_uploader("エクスポートしたJSONファイルを選択してください", type="json")
+    # 1. JSON/CSV ファイルからの移行
+    st.write("### 1. ファイルから移行 (.json / .csv)")
+    uploaded_file = st.file_uploader("ファイルを選択してください", type=["json", "csv"])
     if uploaded_file is not None:
         try:
-            records_json = json.load(uploaded_file)
-            import_df = pd.DataFrame(records_json)
-            # Adjust column names to match Streamlit schema
-            rename_map = {"gameType": "game_type", "recoveryCash": "recovery", "cashInvest": "invest"}
-            import_df = import_df.rename(columns=rename_map)
+            if uploaded_file.name.endswith(".json"):
+                records_json = json.load(uploaded_file)
+                import_df = pd.DataFrame(records_json)
+                # Adjust column names to match Streamlit schema
+                rename_map = {"gameType": "game_type", "recoveryCash": "recovery", "cashInvest": "invest"}
+                import_df = import_df.rename(columns=rename_map)
+            else:
+                # CSV Import
+                import_df = pd.read_csv(uploaded_file)
+                # Ensure date format and common column mapping
+                if "日付" in import_df.columns:
+                    col_map = {
+                        "日付": "date", "ホール": "hall", "タイプ": "game_type", 
+                        "機種": "machine", "投資": "invest", "回収": "recovery", 
+                        "収支": "balance", "時間": "hours", "メモ": "memo"
+                    }
+                    import_df = import_df.rename(columns=col_map)
             
-            if st.button("JSONデータを一括登録"):
+            # Common processing for imported data
+            for col in ["id", "player"]:
+                if col not in import_df.columns:
+                    if col == "id": import_df[col] = [str(int(datetime.now().timestamp()) + i) for i in range(len(import_df))]
+                    if col == "player": import_df[col] = import_player if "import_player" in locals() else "Player 1"
+            
+            # Numeric conversion
+            for col in ["invest", "recovery", "balance", "hours"]:
+                if col in import_df.columns:
+                    import_df[col] = pd.to_numeric(import_df[col].astype(str).str.replace('¥', '').str.replace(',', ''), errors='coerce').fillna(0)
+
+            st.write("プレビュー:", import_df.head())
+            if st.button("選んだデータを一括登録"):
+                # Reorder columns to match main dataframe
+                cols_to_keep = ["id", "player", "game_type", "date", "hall", "machine", "hours", "invest", "recovery", "balance", "memo"]
+                import_df = import_df[[c for c in cols_to_keep if c in import_df.columns]]
+                
                 df = pd.concat([df, import_df], ignore_index=True)
                 save_data(df)
                 st.success(f"{len(import_df)}件のデータをインポートしました！")
