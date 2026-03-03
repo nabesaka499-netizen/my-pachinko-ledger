@@ -138,6 +138,13 @@ st.caption("Pachinko & Slot Balance Analytics")
 # Sidebar for Navigation
 menu = st.sidebar.selectbox("メニュー", ["ホーム・記録", "分析 (月別/年別)", "一括インポート", "設定"])
 
+# Helper to get default values for Hall and Machine
+def get_last_entry_defaults(df):
+    if not df.empty:
+        last = df.iloc[-1]
+        return last['hall'], last['machine']
+    return "新規入力...", "新規入力..."
+
 if menu == "ホーム・記録":
     # --- Month Summary Header ---
     st.subheader("今月の収支サマリー")
@@ -174,14 +181,16 @@ if menu == "ホーム・記録":
     
     with col1:
         player = st.radio("プレイヤー", ["Player 1", "Player 2"], horizontal=True)
-        # Suggestions for Hall and Machine
+        # Suggestions for Hall and Machine with last used defaults
+        last_hall, last_machine = get_last_entry_defaults(df)
+        
         hall_list = sorted(df['hall'].dropna().unique().tolist())
-        hall = st.selectbox("ホール名", ["新規入力..."] + hall_list)
+        hall = st.selectbox("ホール名", ["新規入力..."] + hall_list, index=(hall_list.index(last_hall) + 1 if last_hall in hall_list else 0))
         if hall == "新規入力...":
             hall = st.text_input("新しいホール名を入力", placeholder="例: マルハン")
         
         machine_list = sorted(df['machine'].dropna().unique().tolist())
-        machine = st.selectbox("機種名", ["新規入力..."] + machine_list)
+        machine = st.selectbox("機種名", ["新規入力..."] + machine_list, index=(machine_list.index(last_machine) + 1 if last_machine in machine_list else 0))
         if machine == "新規入力...":
             machine = st.text_input("新しい機種名を入力", placeholder="例: Re:ゼロ")
             
@@ -192,18 +201,35 @@ if menu == "ホーム・記録":
         invest = st.number_input("現金投資 (¥)", min_value=0, step=500, value=0)
         recovery = st.number_input("回収金額 (¥)", min_value=0, step=10, value=0)
         
-        # Simple Time Sliders
-        col_sh, col_sm = st.columns(2)
-        start_hour = col_sh.slider("開始時", 9, 23, 9)
-        start_min = col_sm.slider("開始分", 0, 55, 0, step=5)
-        col_eh, col_em = st.columns(2)
-        end_hour = col_eh.slider("終了時", 9, 23, 22)
-        end_min = col_em.slider("終了分", 0, 55, 0, step=5)
+        # Time Sliders with Current Time Buttons
+        st.write("稼働時間設定")
+        now = datetime.now()
+        
+        col_st_time, col_ed_time = st.columns(2)
+        with col_st_time:
+            if st.button("今を開始に"):
+                st.session_state['start_hour'] = now.hour
+                st.session_state['start_min'] = (now.minute // 5) * 5
+            
+            s_h = st.slider("開始時", 0, 23, st.session_state.get('start_hour', 9), key="sh_slider")
+            s_m = st.slider("開始分", 0, 55, st.session_state.get('start_min', 0), step=5, key="sm_slider")
+            st.session_state['start_hour'] = s_h
+            st.session_state['start_min'] = s_m
+
+        with col_ed_time:
+            if st.button("今を終了に"):
+                st.session_state['end_hour'] = now.hour
+                st.session_state['end_min'] = (now.minute // 5) * 5
+                
+            e_h = st.slider("終了時", 0, 23, st.session_state.get('end_hour', 22), key="eh_slider")
+            e_m = st.slider("終了分", 0, 55, st.session_state.get('end_min', 0), step=5, key="em_slider")
+            st.session_state['end_hour'] = e_h
+            st.session_state['end_min'] = e_m
         
         # Calculate hours
-        h_diff = (end_hour + end_min/60) - (start_hour + start_min/60)
+        h_diff = (st.session_state['end_hour'] + st.session_state['end_min']/60) - (st.session_state['start_hour'] + st.session_state['start_min']/60)
         if h_diff < 0: h_diff += 24
-        st.write(f"稼働時間: {h_diff:.1f}h")
+        st.write(f"稼働時間: **{h_diff:.1f}h**")
 
     if st.button("保存する"):
         new_row = {
@@ -230,7 +256,9 @@ if menu == "ホーム・記録":
         st.info("まだ記録がありません。")
     else:
         # Show recent 10 records
-        recent_df = df.tail(10).iloc[::-1]
+        recent_df = df.tail(10).iloc[::-1].copy()
+        # Clean currency display for recent records
+        recent_df['balance'] = recent_df['balance'].astype(int)
         st.dataframe(recent_df[["date", "hall", "machine", "balance", "player"]].style.format({
             "balance": "¥{:,}"
         }), use_container_width=True)
@@ -283,6 +311,7 @@ elif menu == "分析 (月別/年別)":
             summ = summ[summ['balance'] > 0]
             
             import numpy as np
+            summ['balance'] = summ['balance'].astype(int)
             summ['時給'] = (summ['balance'] / summ['hours'].replace(0, np.nan)).fillna(0).astype(int)
             
             if summ.empty:
