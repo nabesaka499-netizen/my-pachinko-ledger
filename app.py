@@ -53,21 +53,26 @@ def get_github_auth():
 def load_data():
     token = get_github_auth()
     if token:
-        # Load from GitHub
-        url = f"https://api.github.com/repos/{GITHUB_USER}/{GITHUB_REPO}/contents/{DATA_FILE}"
-        headers = {"Authorization": f"token {token}"}
-        r = requests.get(url, headers=headers)
-        if r.status_code == 200:
-            content = base64.b64decode(r.json()["content"]).decode("utf-8")
-            df = pd.read_csv(StringIO(content))
-            st.session_state.records = df
-            st.session_state.github_sha = r.json()["sha"]
-            return df
+        try:
+            # Load from GitHub
+            url = f"https://api.github.com/repos/{GITHUB_USER}/{GITHUB_REPO}/contents/{DATA_FILE}"
+            headers = {"Authorization": f"token {token}"}
+            r = requests.get(url, headers=headers)
+            if r.status_code == 200:
+                content_json = r.json()
+                content = base64.b64decode(content_json["content"]).decode("utf-8")
+                df = pd.read_csv(StringIO(content))
+                st.session_state.records = df
+                st.session_state.github_sha = content_json["sha"]
+                return df
+        except Exception as e:
+            st.error(f"GitHub読み込みエラー: {e}")
     
     # Fallback to local or session state
     if "records" not in st.session_state:
         try:
             st.session_state.records = pd.read_csv(DATA_FILE)
+            st.session_state.records['date'] = pd.to_datetime(st.session_state.records['date']).dt.strftime('%Y-%m-%d')
         except:
             st.session_state.records = pd.DataFrame(columns=[
                 "id", "player", "game_type", "date", "hall", "machine", 
@@ -80,25 +85,29 @@ def save_data(df):
     token = get_github_auth()
     
     if token:
-        # Save to GitHub (Commit)
-        url = f"https://api.github.com/repos/{GITHUB_USER}/{GITHUB_REPO}/contents/{DATA_FILE}"
-        headers = {"Authorization": f"token {token}"}
-        
-        # Get current SHA to update
-        sha = st.session_state.get("github_sha")
-        if not sha:
-            r = requests.get(url, headers=headers)
-            if r.status_code == 200: sha = r.json()["sha"]
+        try:
+            # Save to GitHub (Commit)
+            url = f"https://api.github.com/repos/{GITHUB_USER}/{GITHUB_REPO}/contents/{DATA_FILE}"
+            headers = {"Authorization": f"token {token}"}
             
-        csv_content = df.to_csv(index=False)
-        data = {
-            "message": "Update records via App",
-            "content": base64.b64encode(csv_content.encode("utf-8")).decode("utf-8"),
-            "sha": sha
-        }
-        res = requests.put(url, json=data, headers=headers)
-        if res.status_code in [200, 201]:
-            st.session_state.github_sha = res.json()["content"]["sha"]
+            # Get latest SHA to avoid conflicts
+            r_get = requests.get(url, headers=headers)
+            sha = r_get.json()["sha"] if r_get.status_code == 200 else None
+                
+            csv_content = df.to_csv(index=False)
+            data = {
+                "message": f"Update records via App {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+                "content": base64.b64encode(csv_content.encode("utf-8")).decode("utf-8")
+            }
+            if sha: data["sha"] = sha
+            
+            res = requests.put(url, json=data, headers=headers)
+            if res.status_code in [200, 201]:
+                st.session_state.github_sha = res.json()["content"]["sha"]
+            else:
+                st.error(f"保存エラー: {res.status_code} {res.text}")
+        except Exception as e:
+            st.error(f"GitHub保存エラー: {e}")
     else:
         # Local save fallback
         df.to_csv(DATA_FILE, index=False)
@@ -123,8 +132,17 @@ if menu == "ホーム・記録":
     
     with col1:
         player = st.radio("プレイヤー", ["Player 1", "Player 2"], horizontal=True)
-        hall = st.text_input("ホール名", placeholder="例: マルハン")
-        machine = st.text_input("機種名", placeholder="例: Re:ゼロ")
+        # Suggestions for Hall and Machine
+        hall_list = sorted(df['hall'].dropna().unique().tolist())
+        hall = st.selectbox("ホール名", ["新規入力..."] + hall_list)
+        if hall == "新規入力...":
+            hall = st.text_input("新しいホール名を入力", placeholder="例: マルハン")
+        
+        machine_list = sorted(df['machine'].dropna().unique().tolist())
+        machine = st.selectbox("機種名", ["新規入力..."] + machine_list)
+        if machine == "新規入力...":
+            machine = st.text_input("新しい機種名を入力", placeholder="例: Re:ゼロ")
+            
         date = st.date_input("日付", datetime.now())
 
     with col2:
@@ -168,23 +186,30 @@ elif menu == "分析 (月別/年別)":
     if df.empty:
         st.warning("データがありません。")
     else:
-        # Metrics
-        total_bal = df['balance'].sum()
-        total_hours = df['hours'].sum()
-        hourly = total_bal / total_hours if total_hours > 0 else 0
+        # Player Filter
+        pl_filter = st.sidebar.multiselect("プレイヤーで絞り込み", ["Player 1", "Player 2"], default=["Player 1", "Player 2"])
+        df_view = df[df['player'].isin(pl_filter)].copy()
         
-        m1, m2, m3 = st.columns(3)
-        m1.metric("トータル収支", f"¥{int(total_bal):,}")
-        m2.metric("合計稼働時間", f"{total_hours:.1f}h")
-        m3.metric("平均時給", f"¥{int(hourly):,}")
-        
-        # Yearly/Monthly aggregation
-        df['date'] = pd.to_datetime(df['date'])
-        df['year'] = df['date'].dt.year
-        df['month'] = df['date'].dt.strftime('%Y/%m')
-        
-        view_type = st.radio("表示単位", ["月別", "年別"], horizontal=True)
-        group_col = 'month' if view_type == "月別" else 'year'
+        if df_view.empty:
+            st.warning("条件に合うデータがありません。")
+        else:
+            # Metrics
+            total_bal = df_view['balance'].sum()
+            total_hours = df_view['hours'].sum()
+            hourly = total_bal / total_hours if total_hours > 0 else 0
+            
+            m1, m2, m3 = st.columns(3)
+            m1.metric("トータル収支", f"¥{int(total_bal):,}")
+            m2.metric("合計稼働時間", f"{total_hours:.1f}h")
+            m3.metric("平均時給", f"¥{int(hourly):,}")
+            
+            # Yearly/Monthly aggregation
+            df_view['date_dt'] = pd.to_datetime(df_view['date'])
+            df_view['year'] = df_view['date_dt'].dt.year
+            df_view['month'] = df_view['date_dt'].dt.strftime('%Y/%m')
+            
+            view_type = st.radio("表示単位", ["月別", "年別"], horizontal=True)
+            group_col = 'month' if view_type == "月別" else 'year'
         
         summary = df.groupby(group_col).agg({
             'balance': 'sum',
