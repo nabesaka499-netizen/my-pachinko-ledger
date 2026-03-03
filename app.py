@@ -331,4 +331,17 @@ elif menu == "一括インポート":
 
 elif menu == "設定":
     st.subheader("アプリケーション設定")
-    st.info("ここに Google Sheets の認証情報を入力することで、クラウド同期が有効になります。")
+    
+    st.markdown("---")
+    st.subheader("⚠️ データの管理")
+    st.write("これまでに記録したすべてのデータを削除し、初期状態に戻します。")
+    st.warning("この操作は取り消せません。実行前にバックアップ（エクスポート）を推奨します。")
+    
+    if st.button("すべての記録を完全に削除する"):
+        empty_df = pd.DataFrame(columns=[
+            "id", "player", "game_type", "date", "hall", "machine", 
+            "hours", "invest", "recovery", "balance", "memo"
+        ])
+        save_data(empty_df)
+        st.success("すべてのデータを削除しました。")
+        st.rerun()
