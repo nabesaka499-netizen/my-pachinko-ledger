@@ -253,46 +253,52 @@ if menu == "ホーム・記録":
         st.write("稼働時間設定")
         now = datetime.now()
         
-        # Initialize session state from drafts if not exists
-        if f"sh_{player}" not in st.session_state:
-            st.session_state[f"sh_{player}"] = st.session_state.drafts.get(player, {}).get("start_hour", 9)
-        if f"sm_{player}" not in st.session_state:
-            st.session_state[f"sm_{player}"] = st.session_state.drafts.get(player, {}).get("start_min", 0)
+        # Keys for widgets
+        sh_key = f"sh_widget_{player}"
+        sm_key = f"sm_widget_{player}"
+        eh_key = f"eh_widget_{player}"
+        em_key = f"em_widget_{player}"
+
+        # Initialize widget keys in session state if not exists
+        if sh_key not in st.session_state:
+            st.session_state[sh_key] = st.session_state.drafts.get(player, {}).get("start_hour", 9)
+        if sm_key not in st.session_state:
+            st.session_state[sm_key] = st.session_state.drafts.get(player, {}).get("start_min", 0)
+        if eh_key not in st.session_state:
+            st.session_state[eh_key] = 22
+        if em_key not in st.session_state:
+            st.session_state[em_key] = 0
 
         col_st_time, col_ed_time = st.columns(2)
         with col_st_time:
-            if st.button("今を開始に"):
-                st.session_state[f"sh_{player}"] = now.hour
-                st.session_state[f"sm_{player}"] = (now.minute // 5) * 5
-                st.session_state.drafts[player]["start_hour"] = st.session_state[f"sh_{player}"]
-                st.session_state.drafts[player]["start_min"] = st.session_state[f"sm_{player}"]
+            if st.button("開始時間"):
+                st.session_state[sh_key] = now.hour
+                st.session_state[sm_key] = (now.minute // 5) * 5
+                st.session_state.drafts[player]["start_hour"] = st.session_state[sh_key]
+                st.session_state.drafts[player]["start_min"] = st.session_state[sm_key]
                 save_drafts()
-                st.rerun() # Rerun to update slider widgets
+                st.rerun() 
             
-            s_h = st.slider("開始時", 0, 23, value=st.session_state[f"sh_{player}"], key=f"sh_widget_{player}")
-            s_m = st.slider("開始分", 0, 55, value=st.session_state[f"sm_{player}"], step=5, key=f"sm_widget_{player}")
+            s_h = st.slider("開始時", 0, 23, key=sh_key)
+            s_m = st.slider("開始分", 0, 55, step=5, key=sm_key)
             
             # Update draft on slider change
-            if s_h != st.session_state[f"sh_{player}"] or s_m != st.session_state[f"sm_{player}"]:
-                st.session_state[f"sh_{player}"] = s_h
-                st.session_state[f"sm_{player}"] = s_m
+            if s_h != st.session_state.drafts[player]["start_hour"] or s_m != st.session_state.drafts[player]["start_min"]:
                 st.session_state.drafts[player]["start_hour"] = s_h
                 st.session_state.drafts[player]["start_min"] = s_m
                 save_drafts()
 
         with col_ed_time:
-            if st.button("今を終了に"):
-                st.session_state[f"eh_{player}"] = now.hour
-                st.session_state[f"em_{player}"] = (now.minute // 5) * 5
+            if st.button("終了時間"):
+                st.session_state[eh_key] = now.hour
+                st.session_state[em_key] = (now.minute // 5) * 5
                 st.rerun()
                 
-            e_h = st.slider("終了時", 0, 23, value=st.session_state.get(f"eh_{player}", 22), key=f"eh_widget_{player}")
-            e_m = st.slider("終了分", 0, 55, value=st.session_state.get(f"em_{player}", 0), step=5, key=f"em_widget_{player}")
-            st.session_state[f"eh_{player}"] = e_h
-            st.session_state[f"em_{player}"] = e_m
+            e_h = st.slider("終了時", 0, 23, key=eh_key)
+            e_m = st.slider("終了分", 0, 55, step=5, key=em_key)
         
         # Calculate hours
-        h_diff = (st.session_state[f"eh_{player}"] + st.session_state[f"em_{player}"]/60) - (st.session_state[f"sh_{player}"] + st.session_state[f"sm_{player}"]/60)
+        h_diff = (st.session_state[eh_key] + st.session_state[em_key]/60) - (st.session_state[sh_key] + st.session_state[sm_key]/60)
         if h_diff < 0: h_diff += 24
         st.write(f"稼働時間: **{h_diff:.1f}h**")
 
