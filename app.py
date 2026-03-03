@@ -60,6 +60,10 @@ def load_data():
                 content_json = r.json()
                 content = base64.b64decode(content_json["content"]).decode("utf-8")
                 df = pd.read_csv(StringIO(content))
+                # Cleanup: remove completely invalid rows
+                if not df.empty:
+                    df = df.dropna(subset=['date', 'player', 'hall'], how='any')
+                
                 # Normalize date format
                 if "date" in df.columns:
                     df['date'] = pd.to_datetime(df['date']).dt.strftime('%Y-%m-%d')
