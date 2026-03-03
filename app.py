@@ -139,6 +139,36 @@ st.caption("Pachinko & Slot Balance Analytics")
 menu = st.sidebar.selectbox("メニュー", ["ホーム・記録", "分析 (月別/年別)", "一括インポート", "設定"])
 
 if menu == "ホーム・記録":
+    # --- Month Summary Header ---
+    st.subheader("今月の収支サマリー")
+    current_month = datetime.now().strftime("%Y-%m")
+    df_this_month = df.copy()
+    df_this_month['month'] = pd.to_datetime(df['date']).dt.strftime('%Y-%m')
+    df_this_month = df_this_month[df_this_month['month'] == current_month]
+    
+    sum_cols = st.columns(3)
+    players_to_show = ["Player 1", "Player 2", "全員"]
+    
+    for i, p_name in enumerate(players_to_show):
+        with sum_cols[i]:
+            if p_name == "全員":
+                p_df = df_this_month
+            else:
+                p_df = df_this_month[df_this_month['player'] == p_name]
+            
+            p_bal = p_df['balance'].sum()
+            p_hours = p_df['hours'].sum()
+            p_hourly = p_bal / p_hours if p_hours > 0 else 0
+            
+            st.markdown(f"""
+            <div style="padding:10px; border:1px solid rgba(0,242,255,0.2); border-radius:10px; background:rgba(0,242,255,0.05);">
+                <div style="font-weight:bold; color:#00f2ff; margin-bottom:5px;">{p_name} ({datetime.now().strftime('%m月')})</div>
+                <div style="font-size:1.2em; font-weight:bold;">¥{int(p_bal):,}</div>
+                <div style="font-size:0.8em; opacity:0.8;">{p_hours:.1f}h | ¥{int(p_hourly):,}/h</div>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    st.divider()
     st.subheader("実戦記録の追加")
     col1, col2 = st.columns(2)
     
@@ -210,44 +240,66 @@ elif menu == "分析 (月別/年別)":
     if df.empty:
         st.warning("データがありません。")
     else:
-        # Player Filter
-        pl_filter = st.sidebar.multiselect("プレイヤーで絞り込み", ["Player 1", "Player 2"], default=["Player 1", "Player 2"])
-        df_view = df[df['player'].isin(pl_filter)].copy()
+        # Player Filter Tabs
+        tab_p1, tab_p2, tab_all = st.tabs(["Player 1", "Player 2", "全員"])
         
-        if df_view.empty:
-            st.warning("条件に合うデータがありません。")
-        else:
-            # Metrics
-            total_bal = df_view['balance'].sum()
-            total_hours = df_view['hours'].sum()
-            hourly = total_bal / total_hours if total_hours > 0 else 0
+        # Determine current selection based on active tab
+        # Note: In Streamlit, tabs handle their own content. We can define the logic inside each tab.
+        
+        def show_analysis(filter_p):
+            if filter_p == "全員":
+                df_v = df.copy()
+            else:
+                df_v = df[df['player'] == filter_p].copy()
             
-            m1, m2, m3 = st.columns(3)
-            m1.metric("トータル収支", f"¥{int(total_bal):,}")
-            m2.metric("合計稼働時間", f"{total_hours:.1f}h")
-            m3.metric("平均時給", f"¥{int(hourly):,}")
+            if df_v.empty:
+                st.warning("データがありません。")
+                return
+
+            # Metrics
+            t_bal = df_v['balance'].sum()
+            t_hours = df_v['hours'].sum()
+            h_ly = t_bal / t_hours if t_hours > 0 else 0
+            
+            mc1, mc2, mc3 = st.columns(3)
+            mc1.metric("トータル収支", f"¥{int(t_bal):,}")
+            mc2.metric("合計稼働時間", f"{t_hours:.1f}h")
+            mc3.metric("平均時給", f"¥{int(h_ly):,}")
             
             # Yearly/Monthly aggregation
-            df_view['date_dt'] = pd.to_datetime(df_view['date'])
-            df_view['year'] = df_view['date_dt'].dt.year
-            df_view['month'] = df_view['date_dt'].dt.strftime('%Y/%m')
+            df_v['date_dt'] = pd.to_datetime(df_v['date'])
+            df_v['year'] = df_v['date_dt'].dt.year
+            df_v['month'] = df_v['date_dt'].dt.strftime('%Y/%m')
             
-            view_type = st.radio("表示単位", ["月別", "年別"], horizontal=True)
-            group_col = 'month' if view_type == "月別" else 'year'
+            v_type = st.radio(f"{filter_p} - 表示単位", ["月別", "年別"], horizontal=True, key=f"v_type_{filter_p}")
+            g_col = 'month' if v_type == "月別" else 'year'
         
-            summary = df_view.groupby(group_col).agg({
+            summ = df_v.groupby(g_col).agg({
                 'balance': 'sum',
                 'hours': 'sum'
             }).sort_index(ascending=False)
             
-            import numpy as np
-            summary['時給'] = (summary['balance'] / summary['hours'].replace(0, np.nan)).fillna(0).astype(int)
+            # Filter out 0 or less balance if requested
+            summ = summ[summ['balance'] > 0]
             
-            st.dataframe(summary.style.format({
-                'balance': '¥{:,}',
-                'hours': '{:.1f}h',
-                '時給': '¥{:,}'
-            }), use_container_width=True)
+            import numpy as np
+            summ['時給'] = (summ['balance'] / summ['hours'].replace(0, np.nan)).fillna(0).astype(int)
+            
+            if summ.empty:
+                st.info("条件に一致する（収支がプラスの）データがありません。")
+            else:
+                st.dataframe(summ.style.format({
+                    'balance': '¥{:,}',
+                    'hours': '{:.1f}h',
+                    '時給': '¥{:,}'
+                }), use_container_width=True)
+
+        with tab_p1:
+            show_analysis("Player 1")
+        with tab_p2:
+            show_analysis("Player 2")
+        with tab_all:
+            show_analysis("全員")
 
 elif menu == "一括インポート":
     st.subheader("データの移行・取り込み")
