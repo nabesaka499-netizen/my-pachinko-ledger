@@ -21,18 +21,16 @@ st.markdown("""
         text-shadow: 0 0 10px rgba(0, 242, 255, 0.5);
     }
     .stMetric {
-        background: rgba(255, 255, 255, 0.05);
-        padding: 15px;
-        border-radius: 10px;
-        border: 1px solid rgba(0, 242, 255, 0.2);
+        background: rgba(0, 242, 255, 0.05) !important;
+        border: 1px solid rgba(0, 242, 255, 0.3) !important;
+        box-shadow: 0 0 15px rgba(0, 242, 255, 0.1);
     }
-    .stButton>button {
-        background: linear-gradient(135deg, #00f2ff, #00d4ff);
-        color: #0a0b1e;
-        font-weight: bold;
-        border: none;
-        border-radius: 8px;
-        width: 100%;
+    .stDataFrame, .stTable {
+        border: 1px solid rgba(0, 242, 255, 0.2);
+        border-radius: 10px;
+    }
+    div[data-testid="stMetricValue"] > div {
+        color: #00f2ff !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -180,6 +178,18 @@ if menu == "ホーム・記録":
         df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
         save_data(df)
         st.success("データを保存しました！")
+        st.rerun()
+
+    st.divider()
+    st.subheader("最新の記録 (10件)")
+    if df.empty:
+        st.info("まだ記録がありません。")
+    else:
+        # Show recent 10 records
+        recent_df = df.tail(10).iloc[::-1]
+        st.dataframe(recent_df[["date", "hall", "machine", "balance", "player"]].style.format({
+            "balance": "¥{:,}"
+        }), use_container_width=True)
 
 elif menu == "分析 (月別/年別)":
     st.subheader("収支統計")
