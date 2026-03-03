@@ -111,9 +111,23 @@ def save_data(df):
         df.to_csv(DATA_FILE, index=False)
 
 def calculate_balance(row):
-    # Logic from JS: (recovery - invest_from_count) - cash_invest
-    # Simplified for Streamlit (assuming direct Yen input for now)
     return row['recovery'] - row['invest']
+
+def parse_time_to_float(time_val):
+    """Converts 'H:M', 'H:MM' or numeric strings/floats to float hours."""
+    if pd.isna(time_val) or time_val == "" or time_val == 0:
+        return 0.0
+    s = str(time_val).strip()
+    if ":" in s:
+        try:
+            h, m = s.split(":")
+            return round(int(h) + int(m)/60, 1)
+        except:
+            return 0.0
+    try:
+        return round(float(s.replace(',', '')), 1)
+    except:
+        return 0.0
 
 # --- App Logic ---
 df = load_data()
@@ -268,9 +282,12 @@ elif menu == "一括インポート":
                     if col == "player": import_df[col] = import_player if "import_player" in locals() else "Player 1"
             
             # Numeric conversion
-            for col in ["invest", "recovery", "balance", "hours"]:
+            for col in ["invest", "recovery", "balance"]:
                 if col in import_df.columns:
                     import_df[col] = pd.to_numeric(import_df[col].astype(str).str.replace('¥', '').str.replace(',', ''), errors='coerce').fillna(0)
+            
+            if "hours" in import_df.columns:
+                import_df["hours"] = import_df["hours"].apply(parse_time_to_float)
 
             st.write("プレビュー:", import_df.head())
             if st.button("選んだデータを一括登録"):
@@ -313,9 +330,12 @@ elif menu == "一括インポート":
                         if col == "player": new_df[col] = import_player
                 
                 # Convert numeric columns
-                for col in ["invest", "recovery", "balance", "hours"]:
+                for col in ["invest", "recovery", "balance"]:
                     if col in new_df.columns:
                         new_df[col] = pd.to_numeric(new_df[col].astype(str).str.replace('¥', '').str.replace(',', ''), errors='coerce').fillna(0)
+                
+                if "hours" in new_df.columns:
+                    new_df["hours"] = new_df["hours"].apply(parse_time_to_float)
                 
                 # Reorder columns to match main dataframe
                 cols_to_keep = ["id", "player", "game_type", "date", "hall", "machine", "hours", "invest", "recovery", "balance", "memo"]
