@@ -141,24 +141,34 @@ st.caption("Pachinko & Slot Balance Analytics")
 # Sidebar for Navigation
 menu = st.sidebar.selectbox("メニュー", ["ホーム・記録", "分析 (月別/年別)", "一括インポート", "設定"])
 
-# Helper to get default values for Hall and Machine
-def get_last_entry_defaults(df):
+# Helper to get default values for Hall and Machine per player
+def get_last_player_defaults(df, player):
+    # Try to get from drafts first
+    drafts = st.session_state.get('drafts', {})
+    p_draft = drafts.get(player, {})
+    if p_draft.get('last_hall') and p_draft.get('last_machine'):
+        return p_draft['last_hall'], p_draft['last_machine']
+    
+    # Fallback to history
     if not df.empty:
-        last = df.iloc[-1]
-        return last['hall'], last['machine']
+        p_history = df[df['player'] == player]
+        if not p_history.empty:
+            last = p_history.iloc[-1]
+            return last['hall'], last['machine']
     return "新規入力...", "新規入力..."
 
 # --- Draft Persistence (for "Browser Closed" scenario) ---
 DRAFT_FILE = "drafts.json"
 
-def load_drafts():
     if "drafts" not in st.session_state:
         try:
             with open(DRAFT_FILE, "r") as f:
                 st.session_state.drafts = json.load(f)
         except:
-            st.session_state.drafts = {"Player 1": {"start_hour": 9, "start_min": 0}, 
-                                      "Player 2": {"start_hour": 9, "start_min": 0}}
+            st.session_state.drafts = {
+                "Player 1": {"start_hour": 9, "start_min": 0, "last_hall": None, "last_machine": None}, 
+                "Player 2": {"start_hour": 9, "start_min": 0, "last_hall": None, "last_machine": None}
+            }
     return st.session_state.drafts
 
 def save_drafts():
@@ -217,29 +227,24 @@ if menu == "ホーム・記録":
                 st.session_state.editing_id = None
                 st.rerun()
 
-        last_hall, last_machine = get_last_entry_defaults(df)
+        # Suggestions for Hall and Machine with last used defaults (Player-specific)
+        last_hall, last_machine = get_last_player_defaults(df, player)
         def_hall = edit_row['hall'] if edit_row is not None else last_hall
         def_mach = edit_row['machine'] if edit_row is not None else last_machine
-        # Robust date parsing for edit
-        if edit_row is not None:
-            try:
-                def_date = pd.to_datetime(edit_row['date']).to_pydatetime()
-            except:
-                def_date = datetime.now()
-        else:
-            def_date = datetime.now()
         
         hall_list = sorted(df['hall'].dropna().unique().tolist())
-        hall = st.selectbox("ホール名", ["新規入力..."] + hall_list, 
-                            index=(hall_list.index(def_hall) + 1 if def_hall in hall_list else 0))
+        hall_options = ["記録しない", "新規入力..."] + hall_list
+        hall = st.selectbox("ホール名", hall_options, 
+                            index=(hall_options.index(last_hall) if last_hall in hall_options else 1))
         if hall == "新規入力...":
-            hall = st.text_input("新しいホール名を入力", value=(def_hall if def_hall not in hall_list else ""), placeholder="例: マルハン")
+            hall = st.text_input("新しいホール名を入力", value=(def_hall if def_hall not in hall_options else ""), placeholder="例: マルハン")
         
         machine_list = sorted(df['machine'].dropna().unique().tolist())
-        machine = st.selectbox("機種名", ["新規入力..."] + machine_list, 
-                               index=(machine_list.index(def_mach) + 1 if def_mach in machine_list else 0))
+        machine_options = ["記録しない", "新規入力..."] + machine_list
+        machine = st.selectbox("機種名", machine_options, 
+                               index=(machine_options.index(last_machine) if last_machine in machine_options else 1))
         if machine == "新規入力...":
-            machine = st.text_input("新しい機種名を入力", value=(def_mach if def_mach not in machine_list else ""), placeholder="例: Re:ゼロ")
+            machine = st.text_input("新しい機種名を入力", value=(def_mach if def_mach not in machine_options else ""), placeholder="例: Re:ゼロ")
             
         date = st.date_input("日付", def_date)
 
@@ -301,8 +306,16 @@ if menu == "ホーム・記録":
         h_diff = (st.session_state[eh_key] + st.session_state[em_key]/60) - (st.session_state[sh_key] + st.session_state[sm_key]/60)
         if h_diff < 0: h_diff += 24
         st.write(f"稼働時間: **{h_diff:.1f}h**")
+        
+        # Sync widget values with session state precisely
+        st.write("---")
 
     if st.button("保存する" if not edit_id else "修正を完了する"):
+        # Update last used hall/machine in drafts
+        st.session_state.drafts[player]["last_hall"] = hall
+        st.session_state.drafts[player]["last_machine"] = machine
+        save_drafts()
+
         new_id = edit_id if edit_id else str(int(datetime.now().timestamp()))
         new_row = {
             "id": new_id,
