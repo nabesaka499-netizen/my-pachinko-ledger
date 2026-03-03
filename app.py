@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 import json
+from io import StringIO
 
 # --- Page Config ---
 st.set_page_config(page_title="収支管理簿", page_icon="💹", layout="wide")
@@ -256,7 +257,6 @@ elif menu == "一括インポート":
     
     if st.button("テキストを解析してインポート"):
         if import_data:
-            from io import StringIO
             try:
                 # TSV Parsing matching user format:
                 # 日付	ホール	タイプ	機種	投資	回収	収支	時間	メモ
