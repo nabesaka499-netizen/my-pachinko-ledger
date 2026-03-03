@@ -270,7 +270,10 @@ if menu == "ホーム・記録":
         game_type = st.selectbox("種別", ["スロット", "パチンコ"], 
                                  index=(0 if (edit_row is not None and edit_row['game_type'] == "スロット") else 1 if (edit_row is not None) else 0))
         invest = st.number_input("現金投資 (¥)", min_value=0, step=500, value=int(edit_row['invest']) if edit_row is not None else 0)
-        recovery = st.number_input("回収金額 (¥)", min_value=0, step=10, value=int(edit_row['recovery']) if edit_row is not None else 0)
+        s_invest = st.number_input("貯玉/貯メダル投資 (玉/枚)", min_value=0, step=10, value=int(edit_row.get('savings_invest', 0)) if edit_row is not None else 0)
+        
+        recovery = st.number_input("現金回収 (¥)", min_value=0, step=10, value=int(edit_row['recovery']) if edit_row is not None else 0)
+        s_recovery = st.number_input("貯玉/貯メダル回収 (玉/枚)", min_value=0, step=10, value=int(edit_row.get('savings_recovery', 0)) if edit_row is not None else 0)
         
         # Time Sliders with Persistence and Sync
         st.write("稼働時間設定")
@@ -345,7 +348,9 @@ if menu == "ホーム・記録":
             "machine": machine,
             "hours": round(h_diff, 1),
             "invest": invest,
+            "savings_invest": s_invest,
             "recovery": recovery,
+            "savings_recovery": s_recovery,
             "balance": recovery - invest,
             "memo": edit_row['memo'] if edit_row is not None else ""
         }
@@ -381,12 +386,20 @@ if menu == "ホーム・記録":
             for idx, row in p_df.iterrows():
                 # Display date with / instead of - for user preference
                 display_date = pd.to_datetime(row['date']).strftime('%Y/%m/%d')
+                
+                # Savings info string
+                s_info = ""
+                s_inv = row.get('savings_invest', 0)
+                s_rec = row.get('savings_recovery', 0)
+                if s_inv > 0 or s_rec > 0:
+                    s_info = f" (貯: -{int(s_inv):,}/+{int(s_rec):,})"
+
                 with st.container():
-                    cols = st.columns([2, 2, 2, 1.5, 1, 1])
+                    cols = st.columns([2, 1.5, 2, 2, 1, 1])
                     cols[0].write(display_date)
                     cols[1].write(row['hall'])
                     cols[2].write(row['machine'])
-                    cols[3].write(f"¥{int(row['balance']):,}")
+                    cols[3].write(f"¥{int(row['balance']):,}{s_info}")
                     
                     if cols[4].button("編集", key=f"edit_{player_name}_{row['id']}"):
                         st.session_state.editing_id = row['id']
@@ -425,6 +438,24 @@ elif menu == "分析 (月別/年別)":
                 st.warning("データがありません。")
                 return
 
+            # --- Date Range Filter ---
+            df_v['date_dt'] = pd.to_datetime(df_v['date'])
+            min_date = df_v['date_dt'].min().date()
+            max_date = df_v['date_dt'].max().date()
+            
+            col_d1, col_d2 = st.columns(2)
+            with col_d1:
+                start_date = st.date_input(f"{filter_p} - 開始日", min_date, key=f"start_{filter_p}")
+            with col_d2:
+                end_date = st.date_input(f"{filter_p} - 終了日", max_date, key=f"end_{filter_p}")
+            
+            # Application of filter
+            df_v = df_v[(df_v['date_dt'].dt.date >= start_date) & (df_v['date_dt'].dt.date <= end_date)]
+
+            if df_v.empty:
+                st.info("指定された期間のデータはありません。")
+                return
+
             # Metrics
             t_bal = df_v['balance'].sum()
             t_hours = df_v['hours'].sum()
@@ -436,7 +467,6 @@ elif menu == "分析 (月別/年別)":
             mc3.metric("平均時給", f"¥{int(h_ly):,}")
             
             # Yearly/Monthly aggregation
-            df_v['date_dt'] = pd.to_datetime(df_v['date'])
             df_v['year'] = df_v['date_dt'].dt.year
             df_v['month'] = df_v['date_dt'].dt.strftime('%Y/%m')
             
