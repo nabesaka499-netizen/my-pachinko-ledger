@@ -84,7 +84,7 @@ def load_data():
         except:
             st.session_state.records = pd.DataFrame(columns=[
                 "id", "player", "game_type", "date", "hall", "machine", 
-                "hours", "invest", "recovery", "balance", "memo"
+                "hours", "invest", "start_savings", "end_savings", "rate", "balance", "memo"
             ])
     return st.session_state.records
 
@@ -175,8 +175,8 @@ def load_drafts():
                 st.session_state.drafts = json.load(f)
         except:
             st.session_state.drafts = {
-                "Player 1": {"start_hour": 9, "start_min": 0, "last_hall": None, "last_machine": None}, 
-                "Player 2": {"start_hour": 9, "start_min": 0, "last_hall": None, "last_machine": None}
+                "Player 1": {"start_hour": 9, "start_min": 0, "last_hall": None, "last_machine": None, "last_rate": None}, 
+                "Player 2": {"start_hour": 9, "start_min": 0, "last_hall": None, "last_machine": None, "last_rate": None}
             }
     return st.session_state.drafts
 
@@ -269,11 +269,41 @@ if menu == "ホーム・記録":
     with col2:
         game_type = st.selectbox("種別", ["スロット", "パチンコ"], 
                                  index=(0 if (edit_row is not None and edit_row['game_type'] == "スロット") else 1 if (edit_row is not None) else 0))
-        invest = st.number_input("現金投資 (¥)", min_value=0, step=500, value=int(edit_row['invest']) if edit_row is not None else 0)
-        s_invest = st.number_input("貯玉/貯メダル投資 (玉/枚)", min_value=0, step=10, value=int(edit_row.get('savings_invest', 0)) if edit_row is not None else 0)
         
-        recovery = st.number_input("現金回収 (¥)", min_value=0, step=10, value=int(edit_row['recovery']) if edit_row is not None else 0)
-        s_recovery = st.number_input("貯玉/貯メダル回収 (玉/枚)", min_value=0, step=10, value=int(edit_row.get('savings_recovery', 0)) if edit_row is not None else 0)
+        # Dynamic labels
+        label_savings = "貯メダル" if game_type == "スロット" else "貯玉"
+        unit_savings = "枚" if game_type == "スロット" else "個"
+        
+        # Rate Selection
+        st.write(f"換算レート設定 ({label_savings})")
+        p_draft = st.session_state.drafts.get(player, {})
+        last_r = p_draft.get("last_rate")
+        
+        if game_type == "スロット":
+            rate_options = [5.06, 5.5]
+            # Default to last used or first option
+            def_idx = rate_options.index(last_r) if last_r in rate_options else 0
+            rate = st.radio("交換レート (円/枚)", rate_options, index=def_idx, horizontal=True)
+        else:
+            rate_options = [27.0, 27.5]
+            def_idx = rate_options.index(last_r) if last_r in rate_options else 0
+            rate = st.radio("交換レート (個/100円)", rate_options, index=def_idx, horizontal=True)
+            
+        # Update last rate in draft
+        if last_r != rate:
+            st.session_state.drafts[player]["last_rate"] = rate
+            save_drafts()
+
+        # Input fields (Empty defaults using value=None)
+        # For edits, we use the saved value, otherwise None
+        invest = st.number_input("現金投資 (¥)", min_value=0, step=500, value=int(edit_row['invest']) if edit_row is not None else None)
+        s_start = st.number_input(f"開始{label_savings} ({unit_savings})", min_value=0, step=10, value=int(edit_row.get('start_savings', 0)) if edit_row is not None else None)
+        s_end = st.number_input(f"終了{label_savings} ({unit_savings})", min_value=0, step=10, value=int(edit_row.get('end_savings', 0)) if edit_row is not None else None)
+        
+        # Hidden or legacy fields (handled in save)
+        # invest_val = invest or 0
+        # s_start_val = s_start or 0
+        # s_end_val = s_end or 0
         
         # Time Sliders with Persistence and Sync
         st.write("稼働時間設定")
@@ -338,6 +368,18 @@ if menu == "ホーム・記録":
         st.session_state.drafts[player]["last_machine"] = machine
         save_drafts()
 
+        # Balance Calculation logic
+        # Slot: (End - Start) * Rate - Invest
+        # Pachinko: (End - Start) * (100 / Rate) - Invest
+        invest_val = invest if invest is not None else 0
+        s_start_val = s_start if s_start is not None else 0
+        s_end_val = s_end if s_end is not None else 0
+        
+        if game_type == "スロット":
+            calc_bal = (s_end_val - s_start_val) * rate - invest_val
+        else:
+            calc_bal = (s_end_val - s_start_val) * (100 / rate) - invest_val
+
         new_id = edit_id if edit_id else str(int(datetime.now().timestamp()))
         new_row = {
             "id": new_id,
@@ -347,11 +389,11 @@ if menu == "ホーム・記録":
             "hall": hall,
             "machine": machine,
             "hours": round(h_diff, 1),
-            "invest": invest,
-            "savings_invest": s_invest,
-            "recovery": recovery,
-            "savings_recovery": s_recovery,
-            "balance": recovery - invest,
+            "invest": invest_val,
+            "start_savings": s_start_val,
+            "end_savings": s_end_val,
+            "rate": rate,
+            "balance": calc_bal,
             "memo": edit_row['memo'] if edit_row is not None else ""
         }
         
@@ -388,11 +430,15 @@ if menu == "ホーム・記録":
                 display_date = pd.to_datetime(row['date']).strftime('%Y/%m/%d')
                 
                 # Savings info string
+                s_start = row.get('start_savings', 0)
+                s_end = row.get('end_savings', 0)
+                s_rate = row.get('rate', "")
+                g_type = row.get('game_type', 'スロット')
+                unit = "枚" if g_type == "スロット" else "玉"
+                
                 s_info = ""
-                s_inv = row.get('savings_invest', 0)
-                s_rec = row.get('savings_recovery', 0)
-                if s_inv > 0 or s_rec > 0:
-                    s_info = f" (貯: -{int(s_inv):,}/+{int(s_rec):,})"
+                if s_start > 0 or s_end > 0:
+                    s_info = f"\n({int(s_start):,}→{int(s_end):,}{unit} @{s_rate})"
 
                 with st.container():
                     cols = st.columns([2, 1.5, 2, 2, 1, 1])
