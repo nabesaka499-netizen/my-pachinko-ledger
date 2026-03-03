@@ -221,18 +221,18 @@ elif menu == "分析 (月別/年別)":
             view_type = st.radio("表示単位", ["月別", "年別"], horizontal=True)
             group_col = 'month' if view_type == "月別" else 'year'
         
-        summary = df.groupby(group_col).agg({
-            'balance': 'sum',
-            'hours': 'sum'
-        }).sort_index(ascending=False)
-        
-        summary['時給'] = (summary['balance'] / summary['hours']).fillna(0).astype(int)
-        
-        st.dataframe(summary.style.format({
-            'balance': '¥{:,}',
-            'hours': '{:.1f}h',
-            '時給': '¥{:,}'
-        }), use_container_width=True)
+            summary = df_view.groupby(group_col).agg({
+                'balance': 'sum',
+                'hours': 'sum'
+            }).sort_index(ascending=False)
+            
+            summary['時給'] = (summary['balance'] / summary['hours']).fillna(0).astype(int)
+            
+            st.dataframe(summary.style.format({
+                'balance': '¥{:,}',
+                'hours': '{:.1f}h',
+                '時給': '¥{:,}'
+            }), use_container_width=True)
 
 elif menu == "一括インポート":
     st.subheader("データの移行・取り込み")
