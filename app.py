@@ -512,6 +512,36 @@ elif menu == "分析 (月別/年別)":
             mc2.metric("合計稼働時間", f"{t_hours:.1f}h")
             mc3.metric("平均時給", f"¥{int(h_ly):,}")
             
+            # --- Periodic Summaries (3, 6, 9 months) ---
+            st.markdown("#### 直近サマリー (全期間から算出)")
+            p_cols = st.columns(3)
+            now_dt = pd.Timestamp.now()
+            
+            # Use data filtered by player but NOT by the specific date range for these "Recent" summaries
+            if filter_p == "全員":
+                df_recent_base = df.copy()
+            else:
+                df_recent_base = df[df['player'] == filter_p].copy()
+            df_recent_base['date_dt'] = pd.to_datetime(df_recent_base['date'])
+
+            for i, months in enumerate([3, 6, 9]):
+                start_p = now_dt - pd.DateOffset(months=months)
+                df_p = df_recent_base[df_recent_base['date_dt'] >= start_p]
+                
+                p_bal = df_p['balance'].sum()
+                p_hours = df_p['hours'].sum()
+                p_hourly = p_bal / p_hours if p_hours > 0 else 0
+                
+                with p_cols[i]:
+                    st.markdown(f"""
+                    <div style="padding:10px; border:1px solid rgba(0,242,255,0.2); border-radius:10px; background:rgba(0,242,255,0.05); text-align:center;">
+                        <div style="font-weight:bold; color:#00f2ff; font-size:0.9em;">直近{months}ヶ月</div>
+                        <div style="font-size:1.1em; font-weight:bold; margin:5px 0;">¥{int(p_bal):,}</div>
+                        <div style="font-size:0.8em; opacity:0.8;">{p_hours:.1f}h | ¥{int(p_hourly):,}/h</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+            st.write("")
+
             # Yearly/Monthly aggregation
             df_v['year'] = df_v['date_dt'].dt.year
             df_v['month'] = df_v['date_dt'].dt.strftime('%Y/%m')
