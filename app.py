@@ -379,9 +379,11 @@ if menu == "ホーム・記録":
             p_df = temp_df.sort_values(by=['sort_date', 'id'], ascending=False).head(10)
             
             for idx, row in p_df.iterrows():
+                # Display date with / instead of - for user preference
+                display_date = pd.to_datetime(row['date']).strftime('%Y/%m/%d')
                 with st.container():
                     cols = st.columns([2, 2, 2, 1.5, 1, 1])
-                    cols[0].write(row['date'])
+                    cols[0].write(display_date)
                     cols[1].write(row['hall'])
                     cols[2].write(row['machine'])
                     cols[3].write(f"¥{int(row['balance']):,}")
