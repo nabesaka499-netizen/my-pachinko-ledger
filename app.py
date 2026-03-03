@@ -145,6 +145,28 @@ def get_last_entry_defaults(df):
         return last['hall'], last['machine']
     return "新規入力...", "新規入力..."
 
+# --- Draft Persistence (for "Browser Closed" scenario) ---
+DRAFT_FILE = "drafts.json"
+
+def load_drafts():
+    if "drafts" not in st.session_state:
+        try:
+            with open(DRAFT_FILE, "r") as f:
+                st.session_state.drafts = json.load(f)
+        except:
+            st.session_state.drafts = {"Player 1": {"start_hour": 9, "start_min": 0}, 
+                                      "Player 2": {"start_hour": 9, "start_min": 0}}
+    return st.session_state.drafts
+
+def save_drafts():
+    try:
+        with open(DRAFT_FILE, "w") as f:
+            json.dump(st.session_state.drafts, f)
+    except:
+        pass
+
+load_drafts()
+
 if menu == "ホーム・記録":
     # --- Month Summary Header ---
     st.subheader("今月の収支サマリー")
@@ -180,60 +202,95 @@ if menu == "ホーム・記録":
     col1, col2 = st.columns(2)
     
     with col1:
-        player = st.radio("プレイヤー", ["Player 1", "Player 2"], horizontal=True)
-        # Suggestions for Hall and Machine with last used defaults
+        player = st.radio("プレイヤー", ["Player 1", "Player 2"], horizontal=True, key="active_player")
+        
+        # Check if we are editing
+        edit_id = st.session_state.get("editing_id")
+        edit_row = None
+        if edit_id:
+            edit_row = df[df['id'] == edit_id].iloc[0] if not df[df['id'] == edit_id].empty else None
+            st.info(f"編集モード: {edit_row['date']} の記録を修正中")
+            if st.button("編集をキャンセル"):
+                st.session_state.editing_id = None
+                st.rerun()
+
+        # Defaults
         last_hall, last_machine = get_last_entry_defaults(df)
+        def_hall = edit_row['hall'] if edit_row is not None else last_hall
+        def_mach = edit_row['machine'] if edit_row is not None else last_machine
+        def_date = datetime.strptime(edit_row['date'], '%Y-%m-%d') if edit_row is not None else datetime.now()
         
         hall_list = sorted(df['hall'].dropna().unique().tolist())
-        hall = st.selectbox("ホール名", ["新規入力..."] + hall_list, index=(hall_list.index(last_hall) + 1 if last_hall in hall_list else 0))
+        hall = st.selectbox("ホール名", ["新規入力..."] + hall_list, 
+                            index=(hall_list.index(def_hall) + 1 if def_hall in hall_list else 0))
         if hall == "新規入力...":
-            hall = st.text_input("新しいホール名を入力", placeholder="例: マルハン")
+            hall = st.text_input("新しいホール名を入力", value=(def_hall if def_hall not in hall_list else ""), placeholder="例: マルハン")
         
         machine_list = sorted(df['machine'].dropna().unique().tolist())
-        machine = st.selectbox("機種名", ["新規入力..."] + machine_list, index=(machine_list.index(last_machine) + 1 if last_machine in machine_list else 0))
+        machine = st.selectbox("機種名", ["新規入力..."] + machine_list, 
+                               index=(machine_list.index(def_mach) + 1 if def_mach in machine_list else 0))
         if machine == "新規入力...":
-            machine = st.text_input("新しい機種名を入力", placeholder="例: Re:ゼロ")
+            machine = st.text_input("新しい機種名を入力", value=(def_mach if def_mach not in machine_list else ""), placeholder="例: Re:ゼロ")
             
-        date = st.date_input("日付", datetime.now())
+        date = st.date_input("日付", def_date)
 
     with col2:
-        game_type = st.selectbox("種別", ["スロット", "パチンコ"], index=0)
-        invest = st.number_input("現金投資 (¥)", min_value=0, step=500, value=0)
-        recovery = st.number_input("回収金額 (¥)", min_value=0, step=10, value=0)
+        game_type = st.selectbox("種別", ["スロット", "パチンコ"], 
+                                 index=(0 if (edit_row is not None and edit_row['game_type'] == "スロット") else 1 if (edit_row is not None) else 0))
+        invest = st.number_input("現金投資 (¥)", min_value=0, step=500, value=int(edit_row['invest']) if edit_row is not None else 0)
+        recovery = st.number_input("回収金額 (¥)", min_value=0, step=10, value=int(edit_row['recovery']) if edit_row is not None else 0)
         
-        # Time Sliders with Current Time Buttons
+        # Time Sliders with Persistence and Sync
         st.write("稼働時間設定")
         now = datetime.now()
         
+        # Initialize session state from drafts if not exists
+        if f"sh_{player}" not in st.session_state:
+            st.session_state[f"sh_{player}"] = st.session_state.drafts.get(player, {}).get("start_hour", 9)
+        if f"sm_{player}" not in st.session_state:
+            st.session_state[f"sm_{player}"] = st.session_state.drafts.get(player, {}).get("start_min", 0)
+
         col_st_time, col_ed_time = st.columns(2)
         with col_st_time:
             if st.button("今を開始に"):
-                st.session_state['start_hour'] = now.hour
-                st.session_state['start_min'] = (now.minute // 5) * 5
+                st.session_state[f"sh_{player}"] = now.hour
+                st.session_state[f"sm_{player}"] = (now.minute // 5) * 5
+                st.session_state.drafts[player]["start_hour"] = st.session_state[f"sh_{player}"]
+                st.session_state.drafts[player]["start_min"] = st.session_state[f"sm_{player}"]
+                save_drafts()
+                st.rerun() # Rerun to update slider widgets
             
-            s_h = st.slider("開始時", 0, 23, st.session_state.get('start_hour', 9), key="sh_slider")
-            s_m = st.slider("開始分", 0, 55, st.session_state.get('start_min', 0), step=5, key="sm_slider")
-            st.session_state['start_hour'] = s_h
-            st.session_state['start_min'] = s_m
+            s_h = st.slider("開始時", 0, 23, value=st.session_state[f"sh_{player}"], key=f"sh_widget_{player}")
+            s_m = st.slider("開始分", 0, 55, value=st.session_state[f"sm_{player}"], step=5, key=f"sm_widget_{player}")
+            
+            # Update draft on slider change
+            if s_h != st.session_state[f"sh_{player}"] or s_m != st.session_state[f"sm_{player}"]:
+                st.session_state[f"sh_{player}"] = s_h
+                st.session_state[f"sm_{player}"] = s_m
+                st.session_state.drafts[player]["start_hour"] = s_h
+                st.session_state.drafts[player]["start_min"] = s_m
+                save_drafts()
 
         with col_ed_time:
             if st.button("今を終了に"):
-                st.session_state['end_hour'] = now.hour
-                st.session_state['end_min'] = (now.minute // 5) * 5
+                st.session_state[f"eh_{player}"] = now.hour
+                st.session_state[f"em_{player}"] = (now.minute // 5) * 5
+                st.rerun()
                 
-            e_h = st.slider("終了時", 0, 23, st.session_state.get('end_hour', 22), key="eh_slider")
-            e_m = st.slider("終了分", 0, 55, st.session_state.get('end_min', 0), step=5, key="em_slider")
-            st.session_state['end_hour'] = e_h
-            st.session_state['end_min'] = e_m
+            e_h = st.slider("終了時", 0, 23, value=st.session_state.get(f"eh_{player}", 22), key=f"eh_widget_{player}")
+            e_m = st.slider("終了分", 0, 55, value=st.session_state.get(f"em_{player}", 0), step=5, key=f"em_widget_{player}")
+            st.session_state[f"eh_{player}"] = e_h
+            st.session_state[f"em_{player}"] = e_m
         
         # Calculate hours
-        h_diff = (st.session_state['end_hour'] + st.session_state['end_min']/60) - (st.session_state['start_hour'] + st.session_state['start_min']/60)
+        h_diff = (st.session_state[f"eh_{player}"] + st.session_state[f"em_{player}"]/60) - (st.session_state[f"sh_{player}"] + st.session_state[f"sm_{player}"]/60)
         if h_diff < 0: h_diff += 24
         st.write(f"稼働時間: **{h_diff:.1f}h**")
 
-    if st.button("保存する"):
+    if st.button("保存する" if not edit_id else "修正を完了する"):
+        new_id = edit_id if edit_id else str(int(datetime.now().timestamp()))
         new_row = {
-            "id": str(int(datetime.now().timestamp())),
+            "id": new_id,
             "player": player,
             "game_type": game_type,
             "date": date.strftime("%Y-%m-%d"),
@@ -243,10 +300,15 @@ if menu == "ホーム・記録":
             "invest": invest,
             "recovery": recovery,
             "balance": recovery - invest,
-            "memo": ""
+            "memo": edit_row['memo'] if edit_row is not None else ""
         }
+        
+        if edit_id:
+            df = df[df['id'] != edit_id] # Remove old version
+        
         df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
         save_data(df)
+        st.session_state.editing_id = None # Clear edit mode
         st.success("データを保存しました！")
         st.rerun()
 
@@ -255,13 +317,28 @@ if menu == "ホーム・記録":
     if df.empty:
         st.info("まだ記録がありません。")
     else:
-        # Show recent 10 records
+        # Show recent 10 records with Edit/Delete
         recent_df = df.tail(10).iloc[::-1].copy()
-        # Clean currency display for recent records
-        recent_df['balance'] = recent_df['balance'].astype(int)
-        st.dataframe(recent_df[["date", "hall", "machine", "balance", "player"]].style.format({
-            "balance": "¥{:,}"
-        }), use_container_width=True)
+        
+        for idx, row in recent_df.iterrows():
+            with st.container():
+                cols = st.columns([2, 2, 2, 1.5, 1.5, 1, 1])
+                cols[0].write(row['date'])
+                cols[1].write(row['hall'])
+                cols[2].write(row['machine'])
+                cols[3].write(f"¥{int(row['balance']):,}")
+                cols[4].write(row['player'])
+                
+                if cols[5].button("編集", key=f"edit_{row['id']}"):
+                    st.session_state.editing_id = row['id']
+                    st.rerun()
+                
+                if cols[6].button("削除", key=f"del_{row['id']}"):
+                    df = df[df['id'] != row['id']]
+                    save_data(df)
+                    st.warning("データを削除しました。")
+                    st.rerun()
+                st.divider()
 
 elif menu == "分析 (月別/年別)":
     st.subheader("収支統計")
