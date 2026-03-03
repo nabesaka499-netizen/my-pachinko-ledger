@@ -60,6 +60,9 @@ def load_data():
                 content_json = r.json()
                 content = base64.b64decode(content_json["content"]).decode("utf-8")
                 df = pd.read_csv(StringIO(content))
+                # Normalize date format
+                if "date" in df.columns:
+                    df['date'] = pd.to_datetime(df['date']).dt.strftime('%Y-%m-%d')
                 st.session_state.records = df
                 st.session_state.github_sha = content_json["sha"]
                 return df
@@ -214,11 +217,17 @@ if menu == "ホーム・記録":
                 st.session_state.editing_id = None
                 st.rerun()
 
-        # Defaults
         last_hall, last_machine = get_last_entry_defaults(df)
         def_hall = edit_row['hall'] if edit_row is not None else last_hall
         def_mach = edit_row['machine'] if edit_row is not None else last_machine
-        def_date = datetime.strptime(edit_row['date'], '%Y-%m-%d') if edit_row is not None else datetime.now()
+        # Robust date parsing for edit
+        if edit_row is not None:
+            try:
+                def_date = pd.to_datetime(edit_row['date']).to_pydatetime()
+            except:
+                def_date = datetime.now()
+        else:
+            def_date = datetime.now()
         
         hall_list = sorted(df['hall'].dropna().unique().tolist())
         hall = st.selectbox("ホール名", ["新規入力..."] + hall_list, 
