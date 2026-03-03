@@ -233,6 +233,15 @@ if menu == "ホーム・記録":
         def_hall = edit_row['hall'] if edit_row is not None else last_hall
         def_mach = edit_row['machine'] if edit_row is not None else last_machine
         
+        # Define default date
+        if edit_row is not None:
+            try:
+                def_date = pd.to_datetime(edit_row['date']).to_pydatetime()
+            except:
+                def_date = datetime.now()
+        else:
+            def_date = datetime.now()
+        
         hall_list = sorted(df['hall'].dropna().unique().tolist())
         hall_options = ["記録しない", "新規入力..."] + hall_list
         hall = st.selectbox("ホール名", hall_options, 
