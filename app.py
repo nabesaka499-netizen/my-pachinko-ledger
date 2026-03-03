@@ -226,7 +226,8 @@ elif menu == "分析 (月別/年別)":
                 'hours': 'sum'
             }).sort_index(ascending=False)
             
-            summary['時給'] = (summary['balance'] / summary['hours']).fillna(0).astype(int)
+            import numpy as np
+            summary['時給'] = (summary['balance'] / summary['hours'].replace(0, np.nan)).fillna(0).astype(int)
             
             st.dataframe(summary.style.format({
                 'balance': '¥{:,}',
