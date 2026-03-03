@@ -60,11 +60,14 @@ def load_data():
                 content_json = r.json()
                 content = base64.b64decode(content_json["content"]).decode("utf-8")
                 df = pd.read_csv(StringIO(content))
-                # Cleanup: remove completely invalid rows
+                # Cleanup: remove completely invalid rows (only date and player are strictly required)
                 if not df.empty:
-                    df = df.dropna(subset=['date', 'player', 'hall'], how='any')
+                    # Fill NaN hall/machine with empty string instead of dropping
+                    df['hall'] = df['hall'].fillna("")
+                    df['machine'] = df['machine'].fillna("")
+                    df = df.dropna(subset=['date', 'player'], how='any')
                 
-                # Normalize date format
+                # Normalize date format and ensure it's a string for saving/displaying
                 if "date" in df.columns:
                     df['date'] = pd.to_datetime(df['date']).dt.strftime('%Y-%m-%d')
                 st.session_state.records = df
@@ -365,10 +368,15 @@ if menu == "ホーム・記録":
         tab_p1, tab_p2 = st.tabs(["Player 1", "Player 2"])
         
         def render_history_list(player_name):
-            p_df = df[df['player'] == player_name].tail(10).iloc[::-1].copy()
-            if p_df.empty:
+            # Sort by date descending
+            temp_df = df[df['player'] == player_name].copy()
+            if temp_df.empty:
                 st.write("履歴がありません。")
                 return
+            
+            # Use pd.to_datetime for stable sorting
+            temp_df['sort_date'] = pd.to_datetime(temp_df['date'])
+            p_df = temp_df.sort_values(by=['sort_date', 'id'], ascending=False).head(10)
             
             for idx, row in p_df.iterrows():
                 with st.container():
