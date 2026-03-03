@@ -160,6 +160,7 @@ def get_last_player_defaults(df, player):
 # --- Draft Persistence (for "Browser Closed" scenario) ---
 DRAFT_FILE = "drafts.json"
 
+def load_drafts():
     if "drafts" not in st.session_state:
         try:
             with open(DRAFT_FILE, "r") as f:
