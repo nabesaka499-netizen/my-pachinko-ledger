@@ -139,7 +139,8 @@ st.title("収支管理簿")
 st.caption("Pachinko & Slot Balance Analytics")
 
 # Sidebar for Navigation
-menu = st.sidebar.selectbox("メニュー", ["ホーム・記録", "分析 (月別/年別)", "一括インポート", "設定"])
+st.sidebar.markdown("### メニュー")
+menu = st.sidebar.radio("選択してください", ["ホーム・記録", "分析 (月別/年別)", "一括インポート", "設定"], label_visibility="collapsed")
 
 # Helper to get default values for Hall and Machine per player
 def get_last_player_defaults(df, player):
@@ -276,7 +277,8 @@ if menu == "ホーム・記録":
 
         # Initialize widget keys in session state if not exists
         if sh_key not in st.session_state:
-            st.session_state[sh_key] = st.session_state.drafts.get(player, {}).get("start_hour", 9)
+            val = st.session_state.drafts.get(player, {}).get("start_hour", 9)
+            st.session_state[sh_key] = max(9, min(23, val))
         if sm_key not in st.session_state:
             st.session_state[sm_key] = st.session_state.drafts.get(player, {}).get("start_min", 0)
         if eh_key not in st.session_state:
@@ -287,14 +289,14 @@ if menu == "ホーム・記録":
         col_st_time, col_ed_time = st.columns(2)
         with col_st_time:
             if st.button("開始時間"):
-                st.session_state[sh_key] = now.hour
+                st.session_state[sh_key] = max(9, min(23, now.hour))
                 st.session_state[sm_key] = (now.minute // 5) * 5
                 st.session_state.drafts[player]["start_hour"] = st.session_state[sh_key]
                 st.session_state.drafts[player]["start_min"] = st.session_state[sm_key]
                 save_drafts()
                 st.rerun() 
             
-            s_h = st.slider("開始時", 0, 23, key=sh_key)
+            s_h = st.slider("開始時", 9, 23, step=1, key=sh_key)
             s_m = st.slider("開始分", 0, 55, step=5, key=sm_key)
             
             # Update draft on slider change
@@ -305,11 +307,11 @@ if menu == "ホーム・記録":
 
         with col_ed_time:
             if st.button("終了時間"):
-                st.session_state[eh_key] = now.hour
+                st.session_state[eh_key] = max(9, min(23, now.hour))
                 st.session_state[em_key] = (now.minute // 5) * 5
                 st.rerun()
                 
-            e_h = st.slider("終了時", 0, 23, key=eh_key)
+            e_h = st.slider("終了時", 9, 23, step=1, key=eh_key)
             e_m = st.slider("終了分", 0, 55, step=5, key=em_key)
         
         # Calculate hours
@@ -355,28 +357,38 @@ if menu == "ホーム・記録":
     if df.empty:
         st.info("まだ記録がありません。")
     else:
-        # Show recent 10 records with Edit/Delete
-        recent_df = df.tail(10).iloc[::-1].copy()
+        st.subheader("最新の履歴")
+        tab_p1, tab_p2 = st.tabs(["Player 1", "Player 2"])
         
-        for idx, row in recent_df.iterrows():
-            with st.container():
-                cols = st.columns([2, 2, 2, 1.5, 1.5, 1, 1])
-                cols[0].write(row['date'])
-                cols[1].write(row['hall'])
-                cols[2].write(row['machine'])
-                cols[3].write(f"¥{int(row['balance']):,}")
-                cols[4].write(row['player'])
-                
-                if cols[5].button("編集", key=f"edit_{row['id']}"):
-                    st.session_state.editing_id = row['id']
-                    st.rerun()
-                
-                if cols[6].button("削除", key=f"del_{row['id']}"):
-                    df = df[df['id'] != row['id']]
-                    save_data(df)
-                    st.warning("データを削除しました。")
-                    st.rerun()
-                st.divider()
+        def render_history_list(player_name):
+            p_df = df[df['player'] == player_name].tail(10).iloc[::-1].copy()
+            if p_df.empty:
+                st.write("履歴がありません。")
+                return
+            
+            for idx, row in p_df.iterrows():
+                with st.container():
+                    cols = st.columns([2, 2, 2, 1.5, 1, 1])
+                    cols[0].write(row['date'])
+                    cols[1].write(row['hall'])
+                    cols[2].write(row['machine'])
+                    cols[3].write(f"¥{int(row['balance']):,}")
+                    
+                    if cols[4].button("編集", key=f"edit_{player_name}_{row['id']}"):
+                        st.session_state.editing_id = row['id']
+                        st.rerun()
+                    
+                    if cols[5].button("削除", key=f"del_{player_name}_{row['id']}"):
+                        df_new = df[df['id'] != row['id']]
+                        save_data(df_new)
+                        st.warning("データを削除しました。")
+                        st.rerun()
+                    st.divider()
+
+        with tab_p1:
+            render_history_list("Player 1")
+        with tab_p2:
+            render_history_list("Player 2")
 
 elif menu == "分析 (月別/年別)":
     st.subheader("収支統計")
