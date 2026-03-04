@@ -84,7 +84,7 @@ def load_data():
         except:
             st.session_state.records = pd.DataFrame(columns=[
                 "id", "player", "game_type", "date", "hall", "machine", 
-                "hours", "invest", "start_savings", "end_savings", "rate", "balance", "memo"
+                "hours", "invest", "start_savings", "end_savings", "cash_out", "rate", "balance", "memo"
             ])
     return st.session_state.records
 
@@ -173,7 +173,9 @@ def get_last_hall_savings(df, player, hall_name):
         return None
     # Sort by date and id to get the absolute latest
     last_row = p_df.sort_values(by=['date', 'id'], ascending=False).iloc[0]
-    return last_row.get('end_savings')
+    e_savings = last_row.get('end_savings', 0)
+    c_out = last_row.get('cash_out', 0)
+    return e_savings - c_out
 
 # --- Draft Persistence (for "Browser Closed" scenario) ---
 DRAFT_FILE = "drafts.json"
@@ -388,6 +390,10 @@ if menu == "ホーム・記録":
         
         # Sync widget values with session state precisely
         st.write("---")
+        # Cash-Out field (at the bottom as requested)
+        st.write("精算・換金 (任意)")
+        cash_out = st.number_input(f"換金した分 ({unit_savings})", min_value=0, step=10, value=int(edit_row.get('cash_out', 0)) if edit_row is not None else None)
+        st.write("---")
 
     if st.button("保存する" if not edit_id else "修正を完了する"):
         # Update last used hall/machine in drafts
@@ -401,6 +407,7 @@ if menu == "ホーム・記録":
         invest_val = invest if invest is not None else 0
         s_start_val = s_start if s_start is not None else 0
         s_end_val = s_end if s_end is not None else 0
+        cash_out_val = cash_out if cash_out is not None else 0
         
         calc_bal = round((s_end_val - s_start_val) * (100 / rate) - invest_val)
 
@@ -416,6 +423,7 @@ if menu == "ホーム・記録":
             "invest": invest_val,
             "start_savings": s_start_val,
             "end_savings": s_end_val,
+            "cash_out": cash_out_val,
             "rate": rate,
             "balance": calc_bal,
             "memo": edit_row['memo'] if edit_row is not None else ""
@@ -464,13 +472,15 @@ if menu == "ホーム・記録":
                 # Savings info string
                 s_start = row.get('start_savings', 0)
                 s_end = row.get('end_savings', 0)
+                s_cout = row.get('cash_out', 0)
                 s_rate = row.get('rate', "")
                 g_type = row.get('game_type', 'スロット')
                 unit = "枚" if g_type == "スロット" else "玉"
                 
                 s_info = ""
                 if s_start > 0 or s_end > 0:
-                    s_info = f"\n({int(s_start):,}→{int(s_end):,}{unit} @{s_rate})"
+                    cout_str = f" [換金:{int(s_cout):,}]" if s_cout > 0 else ""
+                    s_info = f"\n({int(s_start):,}→{int(s_end):,}{unit}{cout_str} @{s_rate})"
 
                 with st.container():
                     cols = st.columns([2, 1.5, 2, 2, 1, 1])
