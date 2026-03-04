@@ -86,6 +86,17 @@ def load_data():
                 "id", "player", "game_type", "date", "hall", "machine", 
                 "hours", "invest", "start_savings", "end_savings", "cash_out_yen", "rate", "balance", "memo"
             ])
+        
+        # Stability: Fill missing columns and NaNs for safety
+        expected_cols = ["id", "player", "game_type", "date", "hall", "machine", "hours", "invest", "start_savings", "end_savings", "cash_out_yen", "rate", "balance", "memo"]
+        for col in expected_cols:
+            if col not in st.session_state.records.columns:
+                st.session_state.records[col] = 0 if col in ["invest", "start_savings", "end_savings", "cash_out_yen", "balance", "hours"] else ""
+        
+        # Fill NaNs in numeric columns
+        num_cols = ["invest", "start_savings", "end_savings", "cash_out_yen", "balance", "hours", "rate"]
+        st.session_state.records[num_cols] = st.session_state.records[num_cols].fillna(0)
+    
     return st.session_state.records
 
 def save_data(df):
@@ -328,9 +339,10 @@ if menu == "ホーム・記録":
         # If editing, use the row's value. Otherwise, try to auto-populate from hall's last record.
         def_s_start = None
         if edit_row is not None:
-            def_s_start = int(edit_row.get('start_savings', 0))
+            raw_s_start = edit_row.get('start_savings', 0)
+            def_s_start = int(raw_s_start) if not pd.isna(raw_s_start) else None
         elif hall_last_savings is not None:
-            def_s_start = int(hall_last_savings)
+            def_s_start = int(hall_last_savings) if not pd.isna(hall_last_savings) else None
             
         s_start = st.number_input(f"開始{label_savings} ({unit_savings})", min_value=0, step=10, value=def_s_start)
         s_end = st.number_input(f"終了{label_savings} ({unit_savings})", min_value=0, step=10, value=int(edit_row.get('end_savings', 0)) if edit_row is not None else None)
