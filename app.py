@@ -165,6 +165,16 @@ def get_last_player_defaults(df, player):
             return last['hall'], last['machine']
     return "新規入力...", "新規入力..."
 
+def get_last_hall_savings(df, player, hall_name):
+    if df.empty or not hall_name or hall_name in ["記録しない", "新規入力..."]:
+        return None
+    p_df = df[(df['player'] == player) & (df['hall'] == hall_name)]
+    if p_df.empty:
+        return None
+    # Sort by date and id to get the absolute latest
+    last_row = p_df.sort_values(by=['date', 'id'], ascending=False).iloc[0]
+    return last_row.get('end_savings')
+
 # --- Draft Persistence (for "Browser Closed" scenario) ---
 DRAFT_FILE = "drafts.json"
 
@@ -295,9 +305,19 @@ if menu == "ホーム・記録":
             save_drafts()
 
         # Input fields (Empty defaults using value=None)
-        # For edits, we use the saved value, otherwise None
+        # Auto-populate Starting Savings from last Ending Savings of this hall
+        hall_last_savings = get_last_hall_savings(df, player, hall)
+        
         invest = st.number_input("現金投資 (¥)", min_value=0, step=500, value=int(edit_row['invest']) if edit_row is not None else None)
-        s_start = st.number_input(f"開始{label_savings} ({unit_savings})", min_value=0, step=10, value=int(edit_row.get('start_savings', 0)) if edit_row is not None else None)
+        
+        # If editing, use the row's value. Otherwise, try to auto-populate from hall's last record.
+        def_s_start = None
+        if edit_row is not None:
+            def_s_start = int(edit_row.get('start_savings', 0))
+        elif hall_last_savings is not None:
+            def_s_start = int(hall_last_savings)
+            
+        s_start = st.number_input(f"開始{label_savings} ({unit_savings})", min_value=0, step=10, value=def_s_start)
         s_end = st.number_input(f"終了{label_savings} ({unit_savings})", min_value=0, step=10, value=int(edit_row.get('end_savings', 0)) if edit_row is not None else None)
         
         # Hidden or legacy fields (handled in save)
@@ -376,9 +396,9 @@ if menu == "ホーム・記録":
         s_end_val = s_end if s_end is not None else 0
         
         if game_type == "スロット":
-            calc_bal = (s_end_val - s_start_val) * rate - invest_val
+            calc_bal = round((s_end_val - s_start_val) * rate - invest_val)
         else:
-            calc_bal = (s_end_val - s_start_val) * (100 / rate) - invest_val
+            calc_bal = round((s_end_val - s_start_val) * (100 / rate) - invest_val)
 
         new_id = edit_id if edit_id else str(int(datetime.now().timestamp()))
         new_row = {
@@ -402,6 +422,14 @@ if menu == "ホーム・記録":
         
         df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
         save_data(df)
+        # Reset time sliders after save
+        st.session_state.drafts[player]["start_hour"] = 9
+        st.session_state.drafts[player]["start_min"] = 0
+        for k in [sh_key, sm_key, eh_key, em_key]:
+            if k in st.session_state:
+                del st.session_state[k]
+        save_drafts()
+        
         st.session_state.editing_id = None # Clear edit mode
         st.success("データを保存しました！")
         st.rerun()
