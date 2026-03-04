@@ -84,7 +84,7 @@ def load_data():
         except:
             st.session_state.records = pd.DataFrame(columns=[
                 "id", "player", "game_type", "date", "hall", "machine", 
-                "hours", "invest", "start_savings", "end_savings", "cash_out", "rate", "balance", "memo"
+                "hours", "invest", "start_savings", "end_savings", "cash_out_yen", "rate", "balance", "memo"
             ])
     return st.session_state.records
 
@@ -174,8 +174,14 @@ def get_last_hall_savings(df, player, hall_name):
     # Sort by date and id to get the absolute latest
     last_row = p_df.sort_values(by=['date', 'id'], ascending=False).iloc[0]
     e_savings = last_row.get('end_savings', 0)
-    c_out = last_row.get('cash_out', 0)
-    return e_savings - c_out
+    c_out_yen = last_row.get('cash_out_yen', 0)
+    rate = last_row.get('rate', 1.0)
+    
+    # Convert Yen back to savings: (Yen / 100 * Rate)
+    # The formula (Yen / 100 * Rate) gives the number of coins/balls
+    # e.g., 10,000 yen / 100 * 5.06 = 506 coins
+    c_out_savings = (c_out_yen / 100) * rate if rate > 0 else 0
+    return e_savings - c_out_savings
 
 # --- Draft Persistence (for "Browser Closed" scenario) ---
 DRAFT_FILE = "drafts.json"
@@ -390,9 +396,9 @@ if menu == "ホーム・記録":
         
         # Sync widget values with session state precisely
         st.write("---")
-        # Cash-Out field (at the bottom as requested)
+        # Cash-Out field (Yen based)
         st.write("精算・換金 (任意)")
-        cash_out = st.number_input(f"換金した分 ({unit_savings})", min_value=0, step=10, value=int(edit_row.get('cash_out', 0)) if edit_row is not None else None)
+        cash_out_yen = st.number_input(f"換金した金額 (¥)", min_value=0, step=500, value=int(edit_row.get('cash_out_yen', 0)) if edit_row is not None else None)
         st.write("---")
 
     if st.button("保存する" if not edit_id else "修正を完了する"):
@@ -407,7 +413,7 @@ if menu == "ホーム・記録":
         invest_val = invest if invest is not None else 0
         s_start_val = s_start if s_start is not None else 0
         s_end_val = s_end if s_end is not None else 0
-        cash_out_val = cash_out if cash_out is not None else 0
+        cash_out_yen_val = cash_out_yen if cash_out_yen is not None else 0
         
         calc_bal = round((s_end_val - s_start_val) * (100 / rate) - invest_val)
 
@@ -472,14 +478,14 @@ if menu == "ホーム・記録":
                 # Savings info string
                 s_start = row.get('start_savings', 0)
                 s_end = row.get('end_savings', 0)
-                s_cout = row.get('cash_out', 0)
+                s_cout_yen = row.get('cash_out_yen', 0)
                 s_rate = row.get('rate', "")
                 g_type = row.get('game_type', 'スロット')
                 unit = "枚" if g_type == "スロット" else "玉"
                 
                 s_info = ""
                 if s_start > 0 or s_end > 0:
-                    cout_str = f" [換金:{int(s_cout):,}]" if s_cout > 0 else ""
+                    cout_str = f" [換金:¥{int(s_cout_yen):,}]" if s_cout_yen > 0 else ""
                     s_info = f"\n({int(s_start):,}→{int(s_end):,}{unit}{cout_str} @{s_rate})"
 
                 with st.container():
