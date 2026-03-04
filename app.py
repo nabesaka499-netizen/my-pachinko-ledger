@@ -240,8 +240,15 @@ if menu == "ホーム・記録":
         edit_id = st.session_state.get("editing_id")
         edit_row = None
         if edit_id:
-            edit_row = df[df['id'] == edit_id].iloc[0] if not df[df['id'] == edit_id].empty else None
-            st.info(f"編集モード: {edit_row['date']} の記録を修正中")
+            edit_row_query = df[df['id'] == edit_id]
+            if not edit_row_query.empty:
+                edit_row = edit_row_query.iloc[0]
+                st.info(f"編集モード: {edit_row['date']} の記録を修正中")
+            else:
+                st.warning("編集対象のデータが見つかりません。")
+                st.session_state.editing_id = None
+                st.rerun()
+            
             if st.button("編集をキャンセル"):
                 st.session_state.editing_id = None
                 st.rerun()
@@ -389,16 +396,13 @@ if menu == "ホーム・記録":
         save_drafts()
 
         # Balance Calculation logic
-        # Slot: (End - Start) * Rate - Invest
-        # Pachinko: (End - Start) * (100 / Rate) - Invest
+        # Slot/Pachinko: (End - Start) * (100 / Rate) - Invest
+        # The user confirmed 5.06/5.5 for slots are "coins per 100 yen"
         invest_val = invest if invest is not None else 0
         s_start_val = s_start if s_start is not None else 0
         s_end_val = s_end if s_end is not None else 0
         
-        if game_type == "スロット":
-            calc_bal = round((s_end_val - s_start_val) * rate - invest_val)
-        else:
-            calc_bal = round((s_end_val - s_start_val) * (100 / rate) - invest_val)
+        calc_bal = round((s_end_val - s_start_val) * (100 / rate) - invest_val)
 
         new_id = edit_id if edit_id else str(int(datetime.now().timestamp()))
         new_row = {
