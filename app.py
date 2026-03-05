@@ -390,8 +390,8 @@ if menu == "ホーム・記録":
                 save_drafts()
                 st.rerun() 
             
-            s_h = st.slider("開始時", 9, 23, step=1, key=sh_key)
-            s_m = st.slider("開始分", 0, 55, step=5, key=sm_key)
+            s_h = st.slider("開始時", 9, 23, step=1, key=sh_key, value=st.session_state[sh_key])
+            s_m = st.slider("開始分", 0, 55, step=5, key=sm_key, value=st.session_state[sm_key])
             
             # Update draft on slider change
             if s_h != st.session_state.drafts[player]["start_hour"] or s_m != st.session_state.drafts[player]["start_min"]:
@@ -405,8 +405,8 @@ if menu == "ホーム・記録":
                 st.session_state[em_key] = (now.minute // 5) * 5
                 st.rerun()
                 
-            e_h = st.slider("終了時", 9, 23, step=1, key=eh_key)
-            e_m = st.slider("終了分", 0, 55, step=5, key=em_key)
+            e_h = st.slider("終了時", 9, 23, step=1, key=eh_key, value=st.session_state[eh_key])
+            e_m = st.slider("終了分", 0, 55, step=5, key=em_key, value=st.session_state[em_key])
         
         # Calculate hours
         h_diff = (st.session_state[eh_key] + st.session_state[em_key]/60) - (st.session_state[sh_key] + st.session_state[sm_key]/60)
@@ -460,16 +460,11 @@ if menu == "ホーム・記録":
             df = df[df['id'] != edit_id] # Remove old version
         
         df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-        save_data(df)
-        # Reset time sliders after save
-        st.session_state.drafts[player]["start_hour"] = 9
-        st.session_state.drafts[player]["start_min"] = 0
-        for k in [sh_key, sm_key, eh_key, em_key]:
-            if k in st.session_state:
-                del st.session_state[k]
         save_drafts()
         
-        st.session_state.editing_id = None # Clear edit mode
+        # Clear editing and reset session keys for inputs if they were cached
+        st.session_state.editing_id = None
+        
         st.success("データを保存しました！")
         st.rerun()
 
