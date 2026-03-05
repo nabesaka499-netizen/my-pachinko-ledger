@@ -450,7 +450,7 @@ if menu == "ホーム・記録":
             "invest": invest_val,
             "start_savings": s_start_val,
             "end_savings": s_end_val,
-            "cash_out": cash_out_val,
+            "cash_out_yen": cash_out_yen_val,
             "rate": rate,
             "balance": calc_bal,
             "memo": edit_row['memo'] if edit_row is not None else ""
