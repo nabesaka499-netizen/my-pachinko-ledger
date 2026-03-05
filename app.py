@@ -565,6 +565,10 @@ elif menu == "分析 (月別/年別)":
                 df_v = df.copy()
             else:
                 df_v = df[df['player'] == filter_p].copy()
+            
+            if df_v.empty:
+                st.warning("データがありません。")
+                return
 
             # --- Date Range Filter ---
             df_v['date_dt'] = pd.to_datetime(df_v['date'])
