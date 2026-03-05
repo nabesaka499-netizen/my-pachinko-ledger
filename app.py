@@ -371,6 +371,7 @@ if menu == "ホーム・記録":
         sm_key = f"sm_widget_{player}"
         eh_key = f"eh_widget_{player}"
         em_key = f"em_widget_{player}"
+        check_24h_key = f"check_24h_{player}"
 
         # Initialize widget keys in session state if not exists
         if sh_key not in st.session_state:
@@ -382,18 +383,26 @@ if menu == "ホーム・記録":
             st.session_state[eh_key] = 22
         if em_key not in st.session_state:
             st.session_state[em_key] = 0
+        if check_24h_key not in st.session_state:
+            st.session_state[check_24h_key] = False
+
+        # --- Dynamic Slider Range ---
+        st.checkbox("深夜・24時間表示 (0時〜)", key=check_24h_key)
+        start_min_h = 0 if st.session_state[check_24h_key] else 9
 
         col_st_time, col_ed_time = st.columns(2)
         with col_st_time:
             if st.button("開始時間"):
-                st.session_state[sh_key] = max(9, min(23, now.hour))
+                if now.hour < 9:
+                    st.session_state[check_24h_key] = True
+                st.session_state[sh_key] = now.hour
                 st.session_state[sm_key] = (now.minute // 5) * 5
                 st.session_state.drafts[player]["start_hour"] = st.session_state[sh_key]
                 st.session_state.drafts[player]["start_min"] = st.session_state[sm_key]
                 save_drafts()
                 st.rerun() 
             
-            s_h = st.slider("開始時", 9, 23, step=1, key=sh_key)
+            s_h = st.slider("開始時", start_min_h, 23, step=1, key=sh_key)
             s_m = st.slider("開始分", 0, 55, step=5, key=sm_key)
             
             # Update draft on slider change
@@ -404,11 +413,13 @@ if menu == "ホーム・記録":
 
         with col_ed_time:
             if st.button("終了時間"):
-                st.session_state[eh_key] = max(9, min(23, now.hour))
+                if now.hour < 9:
+                    st.session_state[check_24h_key] = True
+                st.session_state[eh_key] = now.hour
                 st.session_state[em_key] = (now.minute // 5) * 5
                 st.rerun()
                 
-            e_h = st.slider("終了時", 9, 23, step=1, key=eh_key)
+            e_h = st.slider("終了時", start_min_h, 23, step=1, key=eh_key)
             e_m = st.slider("終了分", 0, 55, step=5, key=em_key)
         
         # Calculate hours
@@ -554,10 +565,6 @@ elif menu == "分析 (月別/年別)":
                 df_v = df.copy()
             else:
                 df_v = df[df['player'] == filter_p].copy()
-            
-            if df_v.empty:
-                st.warning("データがありません。")
-                return
 
             # --- Date Range Filter ---
             df_v['date_dt'] = pd.to_datetime(df_v['date'])
