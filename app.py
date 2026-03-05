@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import json
 from io import StringIO
 
@@ -37,6 +37,9 @@ st.markdown("""
 
 import requests
 import base64
+
+# --- Global Timezone (JST) ---
+JST = timezone(timedelta(hours=9))
 
 # --- Data Handling (GitHub and Local CSV) ---
 GITHUB_USER = "nabesaka499-netizen"
@@ -117,7 +120,7 @@ def save_data(df):
                 
             csv_content = df.to_csv(index=False)
             data = {
-                "message": f"Update records via App {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+                "message": f"Update records via App {datetime.now(JST).strftime('%Y-%m-%d %H:%M')}",
                 "content": base64.b64encode(csv_content.encode("utf-8")).decode("utf-8")
             }
             if sha: data["sha"] = sha
@@ -284,9 +287,9 @@ if menu == "ホーム・記録":
             try:
                 def_date = pd.to_datetime(edit_row['date']).to_pydatetime()
             except:
-                def_date = datetime.now()
+                def_date = datetime.now(JST)
         else:
-            def_date = datetime.now()
+            def_date = datetime.now(JST)
         
         hall_list = sorted(df['hall'].dropna().unique().tolist())
         hall_options = ["記録しない", "新規入力..."] + hall_list
@@ -361,7 +364,7 @@ if menu == "ホーム・記録":
         
         # Time Sliders with Persistence and Sync
         st.write("稼働時間設定")
-        now = datetime.now()
+        now = datetime.now(JST)
         
         # Keys for widgets
         sh_key = f"sh_widget_{player}"
@@ -437,8 +440,9 @@ if menu == "ホーム・記録":
         cash_out_yen_val = cash_out_yen if cash_out_yen is not None else 0
         
         calc_bal = round((s_end_val - s_start_val) * (100 / rate) - invest_val)
-
-        new_id = edit_id if edit_id else str(int(datetime.now().timestamp()))
+        
+        now_ts = datetime.now(JST)
+        new_id = edit_id if edit_id else str(int(now_ts.timestamp()))
         new_row = {
             "id": new_id,
             "player": player,
