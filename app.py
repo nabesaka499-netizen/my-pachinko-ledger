@@ -386,8 +386,7 @@ if menu == "ホーム・記録":
         if check_24h_key not in st.session_state:
             st.session_state[check_24h_key] = False
 
-        # --- Dynamic Slider Range ---
-        st.checkbox("深夜・24時間表示 (0時〜)", key=check_24h_key)
+        # --- Dynamic Slider Range calc ---
         start_min_h = 0 if st.session_state[check_24h_key] else 9
 
         col_st_time, col_ed_time = st.columns(2)
@@ -421,6 +420,9 @@ if menu == "ホーム・記録":
                 
             e_h = st.slider("終了時", start_min_h, 23, step=1, key=eh_key)
             e_m = st.slider("終了分", 0, 55, step=5, key=em_key)
+        
+        # Move checkbox here to allow button logic to update its state before rendering
+        st.checkbox("深夜・24時間表示 (0時〜)", key=check_24h_key)
         
         # Calculate hours
         h_diff = (st.session_state[eh_key] + st.session_state[em_key]/60) - (st.session_state[sh_key] + st.session_state[sm_key]/60)
