@@ -69,7 +69,9 @@ def load_data():
                 
                 # Normalize date format and ensure it's a string for saving/displaying
                 if "date" in df.columns:
-                    df['date'] = pd.to_datetime(df['date']).dt.strftime('%Y-%m-%d')
+                    df['date'] = pd.to_datetime(df['date'], errors='coerce').dt.strftime('%Y-%m-%d')
+                    # Remove any coercion failures (Nat)
+                    df = df.dropna(subset=['date'])
                 st.session_state.records = df
                 st.session_state.github_sha = content_json["sha"]
                 return df
@@ -334,18 +336,23 @@ if menu == "ホーム・記録":
         # Auto-populate Starting Savings from last Ending Savings of this hall
         hall_last_savings = get_last_hall_savings(df, player, hall)
         
-        invest = st.number_input("現金投資 (¥)", min_value=0, step=500, value=int(edit_row['invest']) if edit_row is not None else None)
+        raw_invest = edit_row['invest'] if edit_row is not None else None
+        invest_def = int(raw_invest) if raw_invest is not None and not pd.isna(raw_invest) else None
+        invest = st.number_input("現金投資 (¥)", min_value=0, step=500, value=invest_def)
         
         # If editing, use the row's value. Otherwise, try to auto-populate from hall's last record.
         def_s_start = None
         if edit_row is not None:
             raw_s_start = edit_row.get('start_savings', 0)
-            def_s_start = int(raw_s_start) if not pd.isna(raw_s_start) else None
+            def_s_start = int(raw_s_start) if raw_s_start is not None and not pd.isna(raw_s_start) else None
         elif hall_last_savings is not None:
-            def_s_start = int(hall_last_savings) if not pd.isna(hall_last_savings) else None
+            def_s_start = int(hall_last_savings) if hall_last_savings is not None and not pd.isna(hall_last_savings) else None
             
         s_start = st.number_input(f"開始{label_savings} ({unit_savings})", min_value=0, step=10, value=def_s_start)
-        s_end = st.number_input(f"終了{label_savings} ({unit_savings})", min_value=0, step=10, value=int(edit_row.get('end_savings', 0)) if edit_row is not None else None)
+        
+        raw_s_end = edit_row.get('end_savings', 0) if edit_row is not None else None
+        s_end_def = int(raw_s_end) if raw_s_end is not None and not pd.isna(raw_s_end) else None
+        s_end = st.number_input(f"終了{label_savings} ({unit_savings})", min_value=0, step=10, value=s_end_def)
         
         # Hidden or legacy fields (handled in save)
         # invest_val = invest or 0
@@ -410,7 +417,9 @@ if menu == "ホーム・記録":
         st.write("---")
         # Cash-Out field (Yen based)
         st.write("精算・換金 (任意)")
-        cash_out_yen = st.number_input(f"換金した金額 (¥)", min_value=0, step=500, value=int(edit_row.get('cash_out_yen', 0)) if edit_row is not None else None)
+        raw_co_yen = edit_row.get('cash_out_yen', 0) if edit_row is not None else None
+        co_yen_def = int(raw_co_yen) if raw_co_yen is not None and not pd.isna(raw_co_yen) else None
+        cash_out_yen = st.number_input(f"換金した金額 (¥)", min_value=0, step=500, value=co_yen_def)
         st.write("---")
 
     if st.button("保存する" if not edit_id else "修正を完了する"):
