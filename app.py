@@ -460,9 +460,16 @@ if menu == "ホーム・記録":
             df = df[df['id'] != edit_id] # Remove old version
         
         df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+        save_data(df)
+        
+        # Reset time sliders and inputs for the next entry
+        st.session_state.drafts[player]["start_hour"] = 9
+        st.session_state.drafts[player]["start_min"] = 0
+        for k in [sh_key, sm_key, eh_key, em_key]:
+            if k in st.session_state:
+                del st.session_state[k]
         save_drafts()
         
-        # Clear editing and reset session keys for inputs if they were cached
         st.session_state.editing_id = None
         
         st.success("データを保存しました！")
