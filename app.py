@@ -345,8 +345,19 @@ if menu == "ホーム・記録":
                         st.session_state.editing_id = day_records.iloc[0]['id']
             
             if target_date:
-                new_date = target_date.split("T")[0]
-                # Only update and rerun if the date or mode actually changed to avoid loops
+                try:
+                    # Parse as datetime and convert to JST if it's offset-aware (e.g. UTC from component)
+                    dt_obj = pd.to_datetime(target_date)
+                    if dt_obj.tzinfo is not None:
+                        # Convert UTC to JST
+                        new_date = dt_obj.tz_convert(JST).strftime('%Y-%m-%d')
+                    else:
+                        # Naive, take as is
+                        new_date = dt_obj.strftime('%Y-%m-%d')
+                except:
+                    new_date = target_date.split("T")[0]
+                
+                # Only update and rerun if the date or mode actually changed
                 if st.session_state.get("selected_cal_date") != new_date or (cb == "dateClick" and st.session_state.editing_id is not None):
                     st.session_state.selected_cal_date = new_date
                     if cb in ["dateClick", "select"]:
