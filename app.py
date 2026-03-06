@@ -331,6 +331,15 @@ if menu == "ホーム・記録":
                     st.session_state.editing_id = None
                     st.rerun()
             
+            elif cb == "select":
+                sel = cal_res.get("select", {})
+                target_date = sel.get("startStr") or sel.get("start")
+                if target_date:
+                    # select might return range, but for recording we just want the start date
+                    st.session_state.selected_cal_date = target_date.split("T")[0]
+                    st.session_state.editing_id = None
+                    st.rerun()
+            
             elif cb == "eventClick":
                 ec = cal_res.get("eventClick", {})
                 event = ec.get("event", {})
