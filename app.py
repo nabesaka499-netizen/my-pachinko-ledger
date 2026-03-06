@@ -274,7 +274,7 @@ if menu == "ホーム・記録":
                         if not day_q.empty:
                             st.session_state.editing_id = day_q.iloc[0]['id']
                 
-                # Check for month view change
+                # Check for month view change (navigation)
                 if "view" in res:
                     v_start = res["view"].get("activeStart")
                     if v_start:
@@ -284,6 +284,9 @@ if menu == "ホーム・記録":
                             st.rerun()
 
                 if t_d:
+                    # Clear edit_id if it's a dateClick/select to ensure "New Record" mode
+                    if cb != "eventClick":
+                        st.session_state.editing_id = None
                     st.session_state.selected_cal_date = t_d.split("T")[0]
                     st.rerun()
     else:
