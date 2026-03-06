@@ -504,173 +504,32 @@ if menu == "ホーム・記録":
         st.success("データを保存しました！")
         st.rerun()
 
-    st.divider()
-    st.subheader("最新の記録 (10件)")
-    if df.empty:
-        st.info("まだ記録がありません。")
-    else:
-        st.subheader("最新の履歴")
-        tab_p1, tab_p2 = st.tabs(["Player 1", "Player 2"])
-        
-        def render_history_list(player_name):
-            # Sort by date descending
-            temp_df = df[df['player'] == player_name].copy()
-            if temp_df.empty:
-                st.write("履歴がありません。")
-                return
-            
-            # Use pd.to_datetime for stable sorting
-            temp_df['sort_date'] = pd.to_datetime(temp_df['date'])
-            p_df = temp_df.sort_values(by=['sort_date', 'id'], ascending=False).head(10)
-            
-            for idx, row in p_df.iterrows():
-                # Display date with / instead of - for user preference
-                display_date = pd.to_datetime(row['date']).strftime('%Y/%m/%d')
-                
-                # Savings info string
-                s_start = row.get('start_savings', 0)
-                s_end = row.get('end_savings', 0)
-                s_cout_yen = row.get('cash_out_yen', 0)
-                s_rate = row.get('rate', "")
-                g_type = row.get('game_type', 'スロット')
-                unit = "枚" if g_type == "スロット" else "玉"
-                
-                s_time = row.get('start_time', '--:--')
-                e_time = row.get('end_time', '--:--')
-                
-                s_info = ""
-                if s_start > 0 or s_end > 0:
-                    cout_str = f" [換金:¥{int(s_cout_yen):,}]" if s_cout_yen > 0 else ""
-                    s_info = f"\n({int(s_start):,}→{int(s_end):,}{unit}{cout_str} @{s_rate})"
+        if edit_id:
+            # Delete Button (Safe Confirmation)
+            st.divider()
+            del_conf_key = f"del_form_conf_{edit_id}"
+            if st.session_state.get(del_conf_key):
+                st.warning("この記録を本当に削除しますか？")
+                c_del1, c_del2 = st.columns(2)
+                if c_del1.button("はい、削除します", key="del_final_yes"):
+                    df_new = df[df['id'] != edit_id]
+                    save_data(df_new)
+                    st.session_state.editing_id = None
+                    st.session_state.selected_cal_date = None
+                    del st.session_state[del_conf_key]
+                    st.success("削除しました。")
+                    st.rerun()
+                if c_del2.button("いいえ", key="del_final_no"):
+                    del st.session_state[del_conf_key]
+                    st.rerun()
+            else:
+                if st.button("🗑️ この記録を削除する", key="del_trigger_btn"):
+                    st.session_state[del_conf_key] = True
+                    st.rerun()
 
-                with st.container():
-                    cols = st.columns([2.5, 2, 2.5, 3, 2])
-                    cols[0].write(f"{display_date}\n({s_time}〜{e_time})")
-                    cols[1].write(row['hall'])
-                    cols[2].write(row['machine'])
-                    cols[3].write(f"¥{int(row['balance']):,}{s_info}")
-                    
-                    btn_cols = cols[4].columns(2)
-                    if btn_cols[0].button("編集", key=f"edit_{player_name}_{row['id']}"):
-                        st.session_state.editing_id = row['id']
-                        st.rerun()
-                    
-                    # Delete confirmation logic
-                    del_conf_key = f"del_conf_{player_name}_{row['id']}"
-                    if st.session_state.get(del_conf_key):
-                        st.warning("本当に削除しますか？")
-                        c1, c2 = btn_cols[1].columns(2)
-                        if c1.button("はい", key=f"del_yes_{player_name}_{row['id']}"):
-                            df_new = df[df['id'] != row['id']]
-                            save_data(df_new)
-                            del st.session_state[del_conf_key]
-                            st.rerun()
-                        if c2.button("いいえ", key=f"del_no_{player_name}_{row['id']}"):
-                            del st.session_state[del_conf_key]
-                            st.rerun()
-                    else:
-                        if btn_cols[1].button("削除", key=f"del_{player_name}_{row['id']}"):
-                            st.session_state[del_conf_key] = True
-                            st.rerun()
-                    st.divider()
-
-        with tab_p1:
-            render_history_list("Player 1")
-        with tab_p2:
-            render_history_list("Player 2")
-
-    st.divider()
-    st.subheader("履歴カレンダー (祝日対応)")
-    
-    if not CALENDAR_AVAILABLE:
-        st.info("🔄 カレンダー機能を準備中です。ライブラリのインストールが完了するまでしばらくお待ちください（完了しない場合はアプリのRebootをお試しください）。")
-    else:
-        # Player Filter for Calendar
-        p_cal = st.radio("表示プレイヤー", ["Player 1", "Player 2", "全員"], horizontal=True, key="cal_p_selector")
-        
-        # Prepare calendar events
-        jp_holidays = holidays.Japan()
-        events = []
-        
-        # 1. Add Holidays as Events
-        # Get range of dates from data to identify which years to load holidays for
-        if not df.empty:
-            df_dates = pd.to_datetime(df['date'])
-            start_year = df_dates.min().year
-            end_year = df_dates.max().year
-            # Current year as well
-            cur_year = datetime.now(JST).year
-            
-            for y in range(min(start_year, cur_year), max(end_year, cur_year) + 1):
-                for date, name in sorted(holidays.Japan(years=y).items()):
-                    events.append({
-                        "title": f"㊗️ {name}",
-                        "start": date.strftime("%Y-%m-%d"),
-                        "allDay": True,
-                        "backgroundColor": "#ff4b4b22",
-                        "borderColor": "#ff4b4b",
-                        "textColor": "#ff4b4b",
-                        "display": "background"
-                    })
-                    # Duplicate as title event so it's visible
-                    events.append({
-                        "title": name,
-                        "start": date.strftime("%Y-%m-%d"),
-                        "allDay": True,
-                        "backgroundColor": "transparent",
-                        "borderColor": "transparent",
-                        "textColor": "#ff4b4b",
-                    })
-
-        # 2. Add Profit/Loss as Events
-        cal_df = df.copy() if p_cal == "全員" else df[df['player'] == p_cal]
-        if not cal_df.empty:
-            # Group by date to show daily total
-            daily_summary = cal_df.groupby('date')['balance'].sum().reset_index()
-            for _, row in daily_summary.iterrows():
-                bal = int(row['balance'])
-                color = "#00f2ff" if bal >= 0 else "#ff4b4b"
-                sign = "+" if bal >= 0 else ""
-                events.append({
-                    "title": f"{sign}{bal:,}円",
-                    "start": row['date'],
-                    "allDay": True,
-                    "backgroundColor": f"{color}33",
-                    "borderColor": color,
-                    "textColor": "#ffffff",
-                })
-
-        calendar_options = {
-            "editable": False,
-            "selectable": False,
-            "headerToolbar": {
-                "left": "today prev,next",
-                "center": "title",
-                "right": "dayGridMonth",
-            },
-            "initialView": "dayGridMonth",
-            "locale": "ja",
-        }
-        
-        custom_css="""
-            .fc-event-title {
-                font-weight: bold;
-                font-size: 0.85em;
-            }
-            .fc-daygrid-day-number {
-                color: #00f2ff !important;
-                text-decoration: none !important;
-            }
-            .fc-col-header-cell-cushion {
-                color: #00f2ff !important;
-                text-decoration: none !important;
-            }
-            .fc-toolbar-title {
-                color: #00f2ff !important;
-            }
-        """
-        
-        calendar(events=events, options=calendar_options, custom_css=custom_css)
+    # --- ANALYTICS (Brief list if user still wants it?) ---
+    # User requested to remove "Latest History" item and replace with calendar.
+    # So we don't render render_history_list here anymore.
 
 elif menu == "分析 (月別/年別)":
     st.subheader("収支統計")
