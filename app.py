@@ -287,29 +287,29 @@ if menu == "ホーム・記録":
             h_idx = (h_list.index(last_h)+1) if last_h in h_list else 0
             hall = st.selectbox("ホール名", ["新規入力..."] + h_list, index=h_idx)
             if hall == "新規入力...":
-                hall = st.text_input("ホール名を入力", value=(e_row['hall'] if e_row else ""))
+                hall = st.text_input("ホール名を入力", value=(e_row['hall'] if e_row is not None else ""))
             
             m_list = sorted(df['machine'].dropna().unique().tolist())
             m_idx = (m_list.index(last_m)+1) if last_m in m_list else 0
             mach = st.selectbox("機種名", ["新規入力..."] + m_list, index=m_idx)
             if mach == "新規入力...":
-                mach = st.text_input("機種名を入力", value=(e_row['machine'] if e_row else ""))
-            memo = st.text_area("メモ", value=(e_row['memo'] if e_row else ""))
+                mach = st.text_input("機種名を入力", value=(e_row['machine'] if e_row is not None else ""))
+            memo = st.text_area("メモ", value=(e_row['memo'] if e_row is not None else ""))
 
         with col2:
-            gt_idx = 0 if not e_row or e_row['game_type'] == "スロット" else 1
+            gt_idx = 0 if e_row is None or e_row['game_type'] == "スロット" else 1
             gt = st.radio("種別", ["スロット", "パチンコ"], horizontal=True, index=gt_idx)
             
             r_idx = 0
-            if e_row and e_row['rate'] in [5.06, 5.5, 27.0, 27.5]:
+            if e_row is not None and e_row['rate'] in [5.06, 5.5, 27.0, 27.5]:
                 r_idx = [5.06, 5.5, 27.0, 27.5].index(e_row['rate'])
             rate = st.radio("交換率", [5.06, 5.5, 27.0, 27.5], horizontal=True, index=r_idx)
             
-            invest = st.number_input("投資 (¥)", min_value=0, step=500, value=int(e_row['invest']) if e_row else 0)
+            invest = st.number_input("投資 (¥)", min_value=0, step=500, value=int(e_row['invest']) if e_row is not None else 0)
             l_sav = get_last_hall_savings(df, f_p, hall)
-            s_s = st.number_input("開始貯メダル/玉", min_value=0, value=int(e_row['start_savings'] if e_row else l_sav))
-            s_e = st.number_input("終了貯メダル/玉", min_value=0, value=int(e_row['end_savings'] if e_row else 0))
-            hr = st.slider("時間 (h)", 0.0, 16.0, step=0.5, value=float(e_row['hours']) if e_row else 0.0)
+            s_s = st.number_input("開始貯メダル/玉", min_value=0, value=int(e_row['start_savings'] if e_row is not None else l_sav))
+            s_e = st.number_input("終了貯メダル/玉", min_value=0, value=int(e_row['end_savings'] if e_row is not None else 0))
+            hr = st.slider("時間 (h)", 0.0, 16.0, step=0.5, value=float(e_row['hours']) if e_row is not None else 0.0)
 
         if st.button("保存する", use_container_width=True, type="primary"):
             bal = round((s_e - s_s) * (100 / rate) - invest)
