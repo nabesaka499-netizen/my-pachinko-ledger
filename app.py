@@ -287,6 +287,7 @@ if menu == "ホーム・記録":
         cal_df = df[df['player'] == p_cal].copy()
         if not cal_df.empty:
             daily_summary = cal_df.groupby('date')['balance'].sum().reset_index()
+            for _, row in daily_summary.iterrows():
                 bal = int(row['balance'])
                 color = "#ffffff" if bal >= 0 else "#ff4b4b"
                 sign = "+" if bal >= 0 else ""
