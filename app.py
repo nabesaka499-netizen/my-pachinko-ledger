@@ -89,11 +89,11 @@ def load_data():
         except:
             st.session_state.records = pd.DataFrame(columns=[
                 "id", "player", "game_type", "date", "hall", "machine", 
-                "hours", "invest", "start_savings", "end_savings", "cash_out_yen", "rate", "balance", "memo"
+                "hours", "start_time", "end_time", "invest", "start_savings", "end_savings", "cash_out_yen", "rate", "balance", "memo"
             ])
         
         # Stability: Fill missing columns and NaNs for safety
-        expected_cols = ["id", "player", "game_type", "date", "hall", "machine", "hours", "invest", "start_savings", "end_savings", "cash_out_yen", "rate", "balance", "memo"]
+        expected_cols = ["id", "player", "game_type", "date", "hall", "machine", "hours", "start_time", "end_time", "invest", "start_savings", "end_savings", "cash_out_yen", "rate", "balance", "memo"]
         for col in expected_cols:
             if col not in st.session_state.records.columns:
                 st.session_state.records[col] = 0 if col in ["invest", "start_savings", "end_savings", "cash_out_yen", "balance", "hours"] else ""
@@ -454,6 +454,10 @@ if menu == "ホーム・記録":
         
         calc_bal = round((s_end_val - s_start_val) * (100 / rate) - invest_val)
         
+        # Format times
+        s_time_str = f"{st.session_state[sh_key]:02d}:{st.session_state[sm_key]:02d}"
+        e_time_str = f"{st.session_state[eh_key]:02d}:{st.session_state[em_key]:02d}"
+
         now_ts = datetime.now(JST)
         new_id = edit_id if edit_id else str(int(now_ts.timestamp()))
         new_row = {
@@ -464,6 +468,8 @@ if menu == "ホーム・記録":
             "hall": hall,
             "machine": machine,
             "hours": round(h_diff, 1),
+            "start_time": s_time_str,
+            "end_time": e_time_str,
             "invest": invest_val,
             "start_savings": s_start_val,
             "end_savings": s_end_val,
@@ -523,27 +529,43 @@ if menu == "ホーム・記録":
                 g_type = row.get('game_type', 'スロット')
                 unit = "枚" if g_type == "スロット" else "玉"
                 
+                s_time = row.get('start_time', '--:--')
+                e_time = row.get('end_time', '--:--')
+                
                 s_info = ""
                 if s_start > 0 or s_end > 0:
                     cout_str = f" [換金:¥{int(s_cout_yen):,}]" if s_cout_yen > 0 else ""
                     s_info = f"\n({int(s_start):,}→{int(s_end):,}{unit}{cout_str} @{s_rate})"
 
                 with st.container():
-                    cols = st.columns([2, 1.5, 2, 2, 1, 1])
-                    cols[0].write(display_date)
+                    cols = st.columns([2.5, 2, 2.5, 3, 2])
+                    cols[0].write(f"{display_date}\n({s_time}〜{e_time})")
                     cols[1].write(row['hall'])
                     cols[2].write(row['machine'])
                     cols[3].write(f"¥{int(row['balance']):,}{s_info}")
                     
-                    if cols[4].button("編集", key=f"edit_{player_name}_{row['id']}"):
+                    btn_cols = cols[4].columns(2)
+                    if btn_cols[0].button("編集", key=f"edit_{player_name}_{row['id']}"):
                         st.session_state.editing_id = row['id']
                         st.rerun()
                     
-                    if cols[5].button("削除", key=f"del_{player_name}_{row['id']}"):
-                        df_new = df[df['id'] != row['id']]
-                        save_data(df_new)
-                        st.warning("データを削除しました。")
-                        st.rerun()
+                    # Delete confirmation logic
+                    del_conf_key = f"del_conf_{player_name}_{row['id']}"
+                    if st.session_state.get(del_conf_key):
+                        st.warning("本当に削除しますか？")
+                        c1, c2 = btn_cols[1].columns(2)
+                        if c1.button("はい", key=f"del_yes_{player_name}_{row['id']}"):
+                            df_new = df[df['id'] != row['id']]
+                            save_data(df_new)
+                            del st.session_state[del_conf_key]
+                            st.rerun()
+                        if c2.button("いいえ", key=f"del_no_{player_name}_{row['id']}"):
+                            del st.session_state[del_conf_key]
+                            st.rerun()
+                    else:
+                        if btn_cols[1].button("削除", key=f"del_{player_name}_{row['id']}"):
+                            st.session_state[del_conf_key] = True
+                            st.rerun()
                     st.divider()
 
         with tab_p1:
