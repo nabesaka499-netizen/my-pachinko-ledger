@@ -407,7 +407,7 @@ if menu == "ホーム・記録":
         else:
             player = st.radio("プレイヤー", ["Player 1", "Player 2"], horizontal=True, key="active_player")
         
-        date = datetime.strptime(st.session_state.selected_cal_date, "%Y-%m-%d")
+        entry_date = datetime.strptime(str(selected_date_str), "%Y-%m-%d")
 
         # Suggestions for Hall and Machine with last used defaults (Player-specific)
         last_hall, last_machine = get_last_player_defaults(df, player)
@@ -595,7 +595,7 @@ if menu == "ホーム・記録":
             "id": new_id,
             "player": player,
             "game_type": game_type,
-            "date": date.strftime("%Y-%m-%d"),
+            "date": entry_date.strftime("%Y-%m-%d"),
             "hall": hall,
             "machine": machine,
             "hours": round(h_diff, 1),
