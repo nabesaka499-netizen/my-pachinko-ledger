@@ -246,19 +246,25 @@ if menu == "ホーム・記録":
                 "headerToolbar": {"left": "prev,next today", "center": "title", "right": "dayGridMonth"},
                 "locale": "ja",
                 "height": 700,
-                "editable": False,
-                "selectable": True
+                "selectable": True,
+                "unselectAuto": False,
+                "selectMirror": True,
+                "longPressDelay": 50,
+                "eventDisplay": "block",
             }
             cal_res = calendar(
                 events=events,
                 options=cal_opts,
-                custom_css=".fc-daygrid-day-number, .fc-toolbar-title { color: #00f2ff !important; }",
+                custom_css=".fc-daygrid-day-number, .fc-toolbar-title { color: #00f2ff !important; } .fc-daygrid-day { cursor: pointer; }",
                 key="main_cal"
             )
             
             # Click Handling
             res = cal_res
-            if res:
+            # Temporary Debug Output (only shows if something happened)
+            if res and "callback" in res:
+                st.caption(f"Debug: Callback={res.get('callback')} Date={res.get('dateClick', {}).get('dateStr') or res.get('select', {}).get('startStr')}")
+                
                 cb = res.get("callback")
                 t_d = None
                 
@@ -274,21 +280,20 @@ if menu == "ホーム・記録":
                         if not day_q.empty:
                             st.session_state.editing_id = day_q.iloc[0]['id']
                 
-                # Check for month view change (navigation)
-                if "view" in res:
-                    v_start = res["view"].get("activeStart")
+                if t_d:
+                    if cb != "eventClick":
+                        st.session_state.editing_id = None
+                    st.session_state.selected_cal_date = str(t_d).split("T")[0]
+                    st.rerun()
+
+                # Month view change (navigation)
+                if cb == "viewDidMount" or "view" in res:
+                    v_start = res.get("view", {}).get("activeStart")
                     if v_start:
                         new_view_month = pd.to_datetime(v_start).strftime("%Y-%m")
                         if st.session_state.view_month != new_view_month:
                             st.session_state.view_month = new_view_month
                             st.rerun()
-
-                if t_d:
-                    # Clear edit_id if it's a dateClick/select to ensure "New Record" mode
-                    if cb != "eventClick":
-                        st.session_state.editing_id = None
-                    st.session_state.selected_cal_date = t_d.split("T")[0]
-                    st.rerun()
     else:
         # --- FORM VIEW ---
         st.markdown(f"### 📅 {curr_date_str.replace('-', '/')} の記録")
