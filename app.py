@@ -382,7 +382,9 @@ if menu == "ホーム・記録":
     
     col_ctx1, col_ctx2 = st.columns([3, 1])
     with col_ctx1:
-        st.markdown(f"### 📅 {selected_date_str.replace('-', '/')} の{'修正' if edit_id else '新規記録'}")
+        # Cast to string safely to avoid AttributeError if it's a date object
+        display_date = str(selected_date_str).replace('-', '/')
+        st.markdown(f"### 📅 {display_date} の{'修正' if edit_id else '新規記録'}")
     with col_ctx2:
         if st.button("キャンセル", key="cancel_form"):
             st.session_state.selected_cal_date = None
