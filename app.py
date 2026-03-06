@@ -265,11 +265,11 @@ if menu == "ホーム・記録":
                 cb = res.get("callback")
                 t_d = None
                 
+                # Normalize date extraction for all click/select events
                 if cb == "dateClick":
-                    t_d = res.get("dateClick", {}).get("dateStr") or res.get("dateClick", {}).get("date")
+                    t_d = res.get("dateClick", {}).get("dateStr")
                 elif cb == "select":
-                    # FullCalendar 'select' startStr is often inclusive, but let's be safe
-                    t_d = res.get("select", {}).get("startStr") or res.get("select", {}).get("start")
+                    t_d = res.get("select", {}).get("startStr")
                 elif cb == "eventClick":
                     props = res.get("eventClick", {}).get("event", {}).get("extendedProps", {})
                     if props.get("type") == "summary":
@@ -291,9 +291,10 @@ if menu == "ホーム・記録":
                     if cb != "eventClick":
                         st.session_state.editing_id = None
                     
-                    # Split 'T' for ISO strings (e.g. 2024-03-12T00:00:00)
-                    selected_date = str(t_d).split("T")[0]
-                    st.session_state.selected_cal_date = selected_date
+                    # Ensure we extract JUST the YYYY-MM-DD part and do NOT let pandas parse it with a timezone
+                    # FullCalendar ISO strings like "2024-03-12T00:00:00" should be split
+                    clean_date = str(t_d).split("T")[0]
+                    st.session_state.selected_cal_date = clean_date
                     st.rerun()
     else:
         # --- FORM VIEW ---
