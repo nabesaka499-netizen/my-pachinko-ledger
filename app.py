@@ -265,10 +265,10 @@ if menu == "ホーム・記録":
                 cb = res.get("callback")
                 t_d = None
                 
-                # Check for various event types and normalize data extraction
                 if cb == "dateClick":
                     t_d = res.get("dateClick", {}).get("dateStr") or res.get("dateClick", {}).get("date")
                 elif cb == "select":
+                    # FullCalendar 'select' startStr is often inclusive, but let's be safe
                     t_d = res.get("select", {}).get("startStr") or res.get("select", {}).get("start")
                 elif cb == "eventClick":
                     props = res.get("eventClick", {}).get("event", {}).get("extendedProps", {})
@@ -278,13 +278,7 @@ if menu == "ホーム・記録":
                         if not day_q.empty:
                             st.session_state.editing_id = day_q.iloc[0]['id']
                 
-                # Debug output to help verify why t_d might be None
-                if not t_d and cb in ["dateClick", "select"]:
-                    st.caption(f"Debug: {cb} data received but date string not found in {list(res.get(cb, {}).keys())}")
-                else:
-                    st.caption(f"Debug: Callback={cb} Date={t_d}")
-
-                # Check for month view change (navigation)
+                # Navigation (Month change)
                 if cb == "viewDidMount" or "view" in res:
                     v_start = res.get("view", {}).get("activeStart")
                     if v_start:
@@ -296,7 +290,10 @@ if menu == "ホーム・記録":
                 if t_d:
                     if cb != "eventClick":
                         st.session_state.editing_id = None
-                    st.session_state.selected_cal_date = str(t_d).split("T")[0]
+                    
+                    # Split 'T' for ISO strings (e.g. 2024-03-12T00:00:00)
+                    selected_date = str(t_d).split("T")[0]
+                    st.session_state.selected_cal_date = selected_date
                     st.rerun()
     else:
         # --- FORM VIEW ---
