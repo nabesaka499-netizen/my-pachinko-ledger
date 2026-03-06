@@ -46,6 +46,8 @@ if "editing_id" not in st.session_state:
     st.session_state.editing_id = None
 if "view_month" not in st.session_state:
     st.session_state.view_month = datetime.now().strftime("%Y-%m")
+if "nav_lock" not in st.session_state:
+    st.session_state.nav_lock = False
 
 # --- Helper Functions ---
 def get_github_auth():
@@ -255,7 +257,7 @@ if menu == "ホーム・記録":
             )
             
             # Click Handling
-            res = cal_res or st.session_state.get("main_cal", {})
+            res = cal_res
             if res:
                 cb = res.get("callback")
                 t_d = None
@@ -272,15 +274,18 @@ if menu == "ホーム・記録":
                         if not day_q.empty:
                             st.session_state.editing_id = day_q.iloc[0]['id']
                 
-                # Update view month if changed, but only if we didn't just click a date
+                # Check for month view change
+                if "view" in res:
+                    v_start = res["view"].get("activeStart")
+                    if v_start:
+                        new_view_month = pd.to_datetime(v_start).strftime("%Y-%m")
+                        if st.session_state.view_month != new_view_month:
+                            st.session_state.view_month = new_view_month
+                            st.rerun()
+
                 if t_d:
                     st.session_state.selected_cal_date = t_d.split("T")[0]
                     st.rerun()
-                elif "view" in res:
-                    new_view_month = pd.to_datetime(res["view"]["activeStart"]).strftime("%Y-%m")
-                    if st.session_state.view_month != new_view_month:
-                        st.session_state.view_month = new_view_month
-                        st.rerun()
     else:
         # --- FORM VIEW ---
         st.markdown(f"### 📅 {curr_date_str.replace('-', '/')} の記録")
