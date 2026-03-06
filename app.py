@@ -260,13 +260,6 @@ if menu == "ホーム・記録":
                 cb = res.get("callback")
                 t_d = None
                 
-                # Update view month if changed
-                if "view" in res:
-                    new_view_month = pd.to_datetime(res["view"]["activeStart"]).strftime("%Y-%m")
-                    if st.session_state.view_month != new_view_month:
-                        st.session_state.view_month = new_view_month
-                        st.rerun()
-
                 if cb == "dateClick":
                     t_d = res.get("dateClick", {}).get("dateStr")
                 elif cb == "select":
@@ -278,9 +271,16 @@ if menu == "ホーム・記録":
                         day_q = cal_df[cal_df['date'] == t_d]
                         if not day_q.empty:
                             st.session_state.editing_id = day_q.iloc[0]['id']
+                
+                # Update view month if changed, but only if we didn't just click a date
                 if t_d:
                     st.session_state.selected_cal_date = t_d.split("T")[0]
                     st.rerun()
+                elif "view" in res:
+                    new_view_month = pd.to_datetime(res["view"]["activeStart"]).strftime("%Y-%m")
+                    if st.session_state.view_month != new_view_month:
+                        st.session_state.view_month = new_view_month
+                        st.rerun()
     else:
         # --- FORM VIEW ---
         st.markdown(f"### 📅 {curr_date_str.replace('-', '/')} の記録")
