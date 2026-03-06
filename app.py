@@ -328,19 +328,28 @@ if menu == "ホーム・記録":
         
         cal_res = calendar(events=events, options=calendar_options, custom_css=custom_css, key="main_cal")
         
-        if cal_res.get("callback") == "dateClick":
-            st.session_state.selected_cal_date = cal_res["dateClick"]["dateStr"]
-            st.session_state.editing_id = None
-            st.rerun()
-        
-        if cal_res.get("callback") == "eventClick":
-            props = cal_res["eventClick"]["event"]["extendedProps"]
-            if props.get("type") == "summary":
-                st.session_state.selected_cal_date = props["date"]
-                day_records = cal_df[cal_df['date'] == props["date"]]
-                if not day_records.empty:
-                    st.session_state.editing_id = day_records.iloc[0]['id']
-                st.rerun()
+        if cal_res:
+            cb = cal_res.get("callback")
+            if cb == "dateClick":
+                dc = cal_res.get("dateClick", {})
+                target_date = dc.get("dateStr") or dc.get("date")
+                if target_date:
+                    st.session_state.selected_cal_date = target_date.split("T")[0]
+                    st.session_state.editing_id = None
+                    st.rerun()
+            
+            elif cb == "eventClick":
+                ec = cal_res.get("eventClick", {})
+                event = ec.get("event", {})
+                props = event.get("extendedProps", {})
+                if props.get("type") == "summary":
+                    target_date = props.get("date")
+                    if target_date:
+                        st.session_state.selected_cal_date = target_date
+                        day_records = cal_df[cal_df['date'] == target_date]
+                        if not day_records.empty:
+                            st.session_state.editing_id = day_records.iloc[0]['id']
+                        st.rerun()
 
     # --- INPUT FORM (Conditioned on selection) ---
     selected_date_str = st.session_state.get("selected_cal_date")
