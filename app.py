@@ -408,7 +408,6 @@ if menu == "ホーム・記録":
         if machine == "新規入力...":
             machine = st.text_input("新しい機種名を入力", value=(def_mach if def_mach not in machine_options else ""), placeholder="例: Re:ゼロ")
             
-        date = st.date_input("日付", def_date)
 
     with col2:
         game_type = st.selectbox("種別", ["スロット", "パチンコ"], 
