@@ -153,6 +153,10 @@ def get_last_hall_savings(df, player, hall_name):
 df = load_data()
 load_drafts()
 
+# Session State for View Month
+if "view_month" not in st.session_state:
+    st.session_state.view_month = datetime.now().strftime("%Y-%m")
+
 # Sidebar (Title and Navigation)
 st.sidebar.title("💹 収支管理簿")
 menu = st.sidebar.radio("メニュー", ["ホーム・記録", "分析 (月別/年別)", "一括インポート", "設定"], label_visibility="collapsed")
@@ -164,6 +168,7 @@ if st.session_state.p_menu != menu:
     if menu == "ホーム・記録":
         st.session_state.selected_cal_date = None
         st.session_state.editing_id = None
+        st.session_state.view_month = datetime.now().strftime("%Y-%m")
         if "main_cal" in st.session_state:
             del st.session_state["main_cal"]
     st.session_state.p_menu = menu
@@ -174,21 +179,36 @@ if menu == "ホーム・記録":
     # Strictly hide form if no date selected
     if curr_date_str is None or str(curr_date_str).lower() == "none" or curr_date_str == "":
         # --- CALENDAR VIEW ---
+        
+        # 1. Update View Month from Calendar Component
+        cal_state = st.session_state.get("main_cal")
+        if cal_state and "view" in cal_state:
+            try:
+                # view['activeStart'] example: '2026-03-01T00:00:00Z'
+                raw_start = cal_state["view"]["activeStart"]
+                # Adding days ensures we hit the correct month despite timezone offsets
+                view_dt = datetime.fromisoformat(raw_start.replace('Z', '+00:00')) + timedelta(days=10)
+                st.session_state.view_month = view_dt.strftime("%Y-%m")
+            except Exception:
+                pass
+
         c_h1, c_h2 = st.columns([1, 1])
         with c_h1:
             # Synced Player Selection
             p_idx = 0 if st.session_state.active_p == "Player 1" else 1
-            st.write("### プレイヤー選択")
+            st.write(f"### プレイヤー選択")
             p_sel = st.radio("表示プレイヤー", ["Player 1", "Player 2"], horizontal=True, index=p_idx, key="p_main")
             st.session_state.active_p = p_sel # Update state
         
-        # Monthly Summary for Selected Player
-        curr_m = datetime.now().strftime("%Y-%m")
+        # Monthly Summary for Selected Player and VISIBLE Month
         df_m = df.copy()
         df_m['month'] = pd.to_datetime(df['date']).dt.strftime('%Y-%m')
-        p_bal = df_m[(df_m['month'] == curr_m) & (df_m['player'] == st.session_state.active_p)]['balance'].sum()
+        p_bal = df_m[(df_m['month'] == st.session_state.view_month) & (df_m['player'] == st.session_state.active_p)]['balance'].sum()
+        
+        # Format month for display
+        disp_month = datetime.strptime(st.session_state.view_month, "%Y-%m").strftime("%m月")
         with c_h2:
-            st.metric(f"{st.session_state.active_p} の今月の収支合計", f"¥{int(p_bal):,}")
+            st.metric(f"{st.session_state.active_p} の {disp_month} 収支計", f"¥{int(p_bal):,}")
         st.divider()
 
         if not CALENDAR_AVAILABLE:
