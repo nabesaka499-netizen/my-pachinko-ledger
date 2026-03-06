@@ -260,12 +260,110 @@ if menu == "ホーム・記録":
             """, unsafe_allow_html=True)
     
     st.divider()
-    st.subheader("実戦記録の追加")
-    col1, col2 = st.columns(2)
     
-    with col1:
-        player = st.radio("プレイヤー", ["Player 1", "Player 2"], horizontal=True, key="active_player")
+    # --- CALENDAR VIEW (Top-level Interface) ---
+    st.subheader("収支カレンダー")
+    
+    if not CALENDAR_AVAILABLE:
+        st.info("🔄 カレンダー機能を準備中です。ライブラリのインストールが完了するまでお待ちください。")
+        selected_date_picker = st.date_input("記録・編集する日付を選択", datetime.now(JST))
+        st.session_state.selected_cal_date = selected_date_picker.strftime("%Y-%m-%d")
+    else:
+        # Player Filter for Calendar
+        p_cal = st.radio("表示プレイヤー", ["Player 1", "Player 2", "全員"], horizontal=True, key="cal_p_selector", index=2)
         
+        # Prepare calendar events
+        events = []
+        jp_holidays = holidays.Japan()
+        
+        # 1. Add Holidays
+        if not df.empty:
+            df_dates = pd.to_datetime(df['date'], errors='coerce')
+            df_dates = df_dates.dropna()
+            if not df_dates.empty:
+                start_year = df_dates.min().year
+                end_year = df_dates.max().year
+                cur_year = datetime.now(JST).year
+                for y in range(min(start_year, cur_year), max(end_year, cur_year) + 1):
+                    for d, name in sorted(holidays.Japan(years=y).items()):
+                        d_str = d.strftime("%Y-%m-%d")
+                        events.append({"title": f"㊗️ {name}", "start": d_str, "allDay": True, "display": "background", "backgroundColor": "#ff4b4b1a"})
+                        events.append({"title": name, "start": d_str, "allDay": True, "textColor": "#ff4b4b", "backgroundColor": "transparent", "borderColor": "transparent"})
+
+        # 2. Add Profit/Loss
+        cal_df = df.copy() if p_cal == "全員" else df[df['player'] == p_cal]
+        if not cal_df.empty:
+            daily_summary = cal_df.groupby('date')['balance'].sum().reset_index()
+            for _, row in daily_summary.iterrows():
+                bal = int(row['balance'])
+                color = "#00f2ff" if bal >= 0 else "#ff4b4b"
+                sign = "+" if bal >= 0 else ""
+                events.append({
+                    "id": f"summary_{row['date']}",
+                    "title": f"{sign}{bal:,}円",
+                    "start": row['date'],
+                    "allDay": True,
+                    "backgroundColor": f"{color}33",
+                    "borderColor": color,
+                    "textColor": "#ffffff",
+                    "extendedProps": {"type": "summary", "date": row['date']}
+                })
+        
+        calendar_options = {
+            "editable": False,
+            "selectable": True,
+            "headerToolbar": {"left": "today prev,next", "center": "title", "right": "dayGridMonth"},
+            "initialView": "dayGridMonth",
+            "locale": "ja",
+            "height": 650,
+        }
+        
+        custom_css="""
+            .fc-event-title { font-weight: bold; font-size: 0.9em; cursor: pointer; }
+            .fc-daygrid-day-number { color: #00f2ff !important; }
+            .fc-col-header-cell-cushion { color: #00f2ff !important; }
+            .fc-toolbar-title { color: #00f2ff !important; }
+            .fc-daygrid-day:hover { background: rgba(0, 242, 255, 0.05) !important; cursor: pointer; }
+        """
+        
+        cal_res = calendar(events=events, options=calendar_options, custom_css=custom_css, key="main_cal")
+        
+        if cal_res.get("callback") == "dateClick":
+            st.session_state.selected_cal_date = cal_res["dateClick"]["dateStr"]
+            st.session_state.editing_id = None
+            st.rerun()
+        
+        if cal_res.get("callback") == "eventClick":
+            props = cal_res["eventClick"]["event"]["extendedProps"]
+            if props.get("type") == "summary":
+                st.session_state.selected_cal_date = props["date"]
+                day_records = cal_df[cal_df['date'] == props["date"]]
+                if not day_records.empty:
+                    st.session_state.editing_id = day_records.iloc[0]['id']
+                st.rerun()
+
+    # --- INPUT FORM (Conditioned on selection) ---
+    selected_date_str = st.session_state.get("selected_cal_date")
+    
+    if not selected_date_str:
+        st.info("💡 カレンダーの日付をタップすると、その日の記録や編集ができます。")
+        # Ensure we don't proceed to form
+        st.stop()
+
+    st.divider()
+    edit_id = st.session_state.get("editing_id")
+    
+    col_ctx1, col_ctx2 = st.columns([3, 1])
+    with col_ctx1:
+        st.markdown(f"### 📅 {selected_date_str.replace('-', '/')} の{'修正' if edit_id else '新規記録'}")
+    with col_ctx2:
+        if st.button("キャンセル", key="cancel_form"):
+            st.session_state.selected_cal_date = None
+            st.session_state.editing_id = None
+            st.rerun()
+
+    col1, col2 = st.columns(2)
+    with col1:
         # Check if we are editing
         edit_id = st.session_state.get("editing_id")
         edit_row = None
@@ -273,15 +371,14 @@ if menu == "ホーム・記録":
             edit_row_query = df[df['id'] == edit_id]
             if not edit_row_query.empty:
                 edit_row = edit_row_query.iloc[0]
-                st.info(f"編集モード: {edit_row['date']} の記録を修正中")
+                player = edit_row['player']
             else:
-                st.warning("編集対象のデータが見つかりません。")
                 st.session_state.editing_id = None
                 st.rerun()
-            
-            if st.button("編集をキャンセル"):
-                st.session_state.editing_id = None
-                st.rerun()
+        else:
+            player = st.radio("プレイヤー", ["Player 1", "Player 2"], horizontal=True, key="active_player")
+        
+        date = datetime.strptime(st.session_state.selected_cal_date, "%Y-%m-%d")
 
         # Suggestions for Hall and Machine with last used defaults (Player-specific)
         last_hall, last_machine = get_last_player_defaults(df, player)
