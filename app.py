@@ -584,7 +584,7 @@ if menu == "ホーム・記録":
     
     if not CALENDAR_AVAILABLE:
         st.info("🔄 カレンダー機能を準備中です。ライブラリのインストールが完了するまでしばらくお待ちください（完了しない場合はアプリのRebootをお試しください）。")
-        return
+    else:
 
     # Player Filter for Calendar
     p_cal = st.radio("表示プレイヤー", ["Player 1", "Player 2", "全員"], horizontal=True, key="cal_p_selector")
