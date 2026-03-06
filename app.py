@@ -408,7 +408,12 @@ if menu == "ホーム・記録":
             player = st.radio("プレイヤー", ["Player 1", "Player 2"], horizontal=True, key="active_player")
         
         # Use pd.to_datetime for more robust parsing of various date formats
-        entry_date = pd.to_datetime(str(selected_date_str)).to_pydatetime()
+        # Use pd.to_datetime with NaT handling for maximum robustness
+        dt_parsed = pd.to_datetime(selected_date_str, errors='coerce')
+        if pd.isna(dt_parsed):
+            entry_date = datetime.now(JST)
+        else:
+            entry_date = dt_parsed.to_pydatetime()
 
         # Suggestions for Hall and Machine with last used defaults (Player-specific)
         last_hall, last_machine = get_last_player_defaults(df, player)
