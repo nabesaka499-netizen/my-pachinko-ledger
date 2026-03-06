@@ -2,8 +2,12 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timezone, timedelta
 import json
-import holidays
-from streamlit_calendar import calendar
+try:
+    import holidays
+    from streamlit_calendar import calendar
+    CALENDAR_AVAILABLE = True
+except ImportError:
+    CALENDAR_AVAILABLE = False
 from io import StringIO
 
 # --- Page Config ---
@@ -578,6 +582,10 @@ if menu == "ホーム・記録":
     st.divider()
     st.subheader("履歴カレンダー (祝日対応)")
     
+    if not CALENDAR_AVAILABLE:
+        st.info("🔄 カレンダー機能を準備中です。ライブラリのインストールが完了するまでしばらくお待ちください（完了しない場合はアプリのRebootをお試しください）。")
+        return
+
     # Player Filter for Calendar
     p_cal = st.radio("表示プレイヤー", ["Player 1", "Player 2", "全員"], horizontal=True, key="cal_p_selector")
     
