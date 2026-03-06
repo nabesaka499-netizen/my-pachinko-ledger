@@ -407,7 +407,8 @@ if menu == "ホーム・記録":
         else:
             player = st.radio("プレイヤー", ["Player 1", "Player 2"], horizontal=True, key="active_player")
         
-        entry_date = datetime.strptime(str(selected_date_str), "%Y-%m-%d")
+        # Use pd.to_datetime for more robust parsing of various date formats
+        entry_date = pd.to_datetime(str(selected_date_str)).to_pydatetime()
 
         # Suggestions for Hall and Machine with last used defaults (Player-specific)
         last_hall, last_machine = get_last_player_defaults(df, player)
