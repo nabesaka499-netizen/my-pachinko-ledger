@@ -246,9 +246,10 @@ if menu == "ホーム・記録":
                 "headerToolbar": {"left": "prev,next today", "center": "title", "right": "dayGridMonth"},
                 "locale": "ja",
                 "height": 700,
-                "selectable": False,  # Disable to avoid conflict with dateClick
+                "selectable": True,
                 "editable": False,
-                "navLinks": True,
+                "navLinks": False,
+                "selectMirror": True,
             }
             cal_res = calendar(
                 events=events,
@@ -263,10 +264,11 @@ if menu == "ホーム・記録":
                 cb = res.get("callback")
                 t_d = None
                 
+                # 1. Capture date selection primary triggers
                 if cb == "dateClick":
                     t_d = res.get("dateClick", {}).get("dateStr")
-                elif cb == "navLinkDayClick":
-                    t_d = res.get("navLinkDayClick", {}).get("dateStr")
+                elif cb == "select":
+                    t_d = res.get("select", {}).get("startStr")
                 elif cb == "eventClick":
                     props = res.get("eventClick", {}).get("event", {}).get("extendedProps", {})
                     if props.get("type") == "summary":
@@ -275,24 +277,22 @@ if menu == "ホーム・記録":
                         if not day_q.empty:
                             st.session_state.editing_id = day_q.iloc[0]['id']
                 
-                # Check for month view change (navigation) - Only rerun if it's a view change
-                if "view" in res and (cb == "viewDidMount" or cb == "datesSet"):
+                # 2. Priority 1: If a date was selected, GO to form view
+                if t_d:
+                    if cb != "eventClick":
+                        st.session_state.editing_id = None
+                    clean_date = str(t_d).split("T")[0]
+                    st.session_state.selected_cal_date = clean_date
+                    st.rerun()
+
+                # 3. Priority 2: Handle month navigation if no date was clicked
+                if "view" in res:
                     v_start = res["view"].get("activeStart")
                     if v_start:
                         new_view_month = pd.to_datetime(v_start).strftime("%Y-%m")
                         if st.session_state.view_month != new_view_month:
                             st.session_state.view_month = new_view_month
                             st.rerun()
-
-                if t_d:
-                    # If we clicked a date (not an event summary), it's a new record
-                    if cb != "eventClick":
-                        st.session_state.editing_id = None
-                    
-                    # ISO string split to avoid TZ offset
-                    clean_date = str(t_d).split("T")[0]
-                    st.session_state.selected_cal_date = clean_date
-                    st.rerun()
     else:
         # --- FORM VIEW ---
         st.markdown(f"### 📅 {curr_date_str.replace('-', '/')} の記録")
