@@ -321,45 +321,50 @@ if menu == "ホーム・記録":
         
         cal_res = calendar(events=events, options=calendar_options, custom_css=custom_css, key="main_cal")
         
-        if cal_res:
-            cb = cal_res.get("callback")
+        # Interaction Logic: Prioritize NEW interactions from the component return value
+        res = cal_res or st.session_state.get("main_cal", {})
+        if res:
+            cb = res.get("callback")
+            target_date = None
+            
             if cb == "dateClick":
-                dc = cal_res.get("dateClick", {})
+                dc = res.get("dateClick", {})
                 target_date = dc.get("dateStr") or dc.get("date")
-                if target_date:
-                    st.session_state.selected_cal_date = target_date.split("T")[0]
-                    st.session_state.editing_id = None
-                    st.rerun()
-            
             elif cb == "select":
-                sel = cal_res.get("select", {})
+                sel = res.get("select", {})
                 target_date = sel.get("startStr") or sel.get("start")
-                if target_date:
-                    # select might return range, but for recording we just want the start date
-                    st.session_state.selected_cal_date = target_date.split("T")[0]
-                    st.session_state.editing_id = None
-                    st.rerun()
-            
             elif cb == "eventClick":
-                ec = cal_res.get("eventClick", {})
+                ec = res.get("eventClick", {})
                 event = ec.get("event", {})
                 props = event.get("extendedProps", {})
                 if props.get("type") == "summary":
                     target_date = props.get("date")
-                    if target_date:
-                        st.session_state.selected_cal_date = target_date
-                        day_records = cal_df[cal_df['date'] == target_date]
-                        if not day_records.empty:
-                            st.session_state.editing_id = day_records.iloc[0]['id']
-                        st.rerun()
+                    # Set editing_id if it's an event click
+                    day_records = cal_df[cal_df['date'] == target_date]
+                    if not day_records.empty:
+                        st.session_state.editing_id = day_records.iloc[0]['id']
+            
+            if target_date:
+                new_date = target_date.split("T")[0]
+                # Only update and rerun if the date or mode actually changed to avoid loops
+                if st.session_state.get("selected_cal_date") != new_date or (cb == "dateClick" and st.session_state.editing_id is not None):
+                    st.session_state.selected_cal_date = new_date
+                    if cb in ["dateClick", "select"]:
+                        st.session_state.editing_id = None
+                    st.rerun()
 
-    # --- INPUT FORM (Conditioned on selection) ---
+    # --- INPUT FORM ---
     selected_date_str = st.session_state.get("selected_cal_date")
     
     if not selected_date_str:
-        st.info("💡 カレンダーの日付をタップすると、その日の記録や編集ができます。")
-        # Ensure we don't proceed to form
-        st.stop()
+        st.markdown("""
+            <div style="padding:20px; text-align:center; border:2px dashed rgba(0,242,255,0.3); border-radius:15px; margin-top:20px;">
+                <h3 style="color:#00f2ff;">👆 カレンダーの日付をタップしてください</h3>
+                <p style="opacity:0.8;">タップした日の記録フォームがここに表示されます。</p>
+            </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.success(f"📅 {selected_date_str} が選択されました。画面を下にスクロールして入力してください。")
 
     st.divider()
     edit_id = st.session_state.get("editing_id")
