@@ -231,30 +231,23 @@ load_drafts()
 
 if menu == "ホーム・記録":
     # --- Month Summary Header ---
-    st.subheader("今月の収支サマリー")
     current_month = datetime.now().strftime("%Y-%m")
     df_this_month = df.copy()
     df_this_month['month'] = pd.to_datetime(df['date']).dt.strftime('%Y-%m')
     df_this_month = df_this_month[df_this_month['month'] == current_month]
     
-    sum_cols = st.columns(3)
-    players_to_show = ["Player 1", "Player 2", "全員"]
-    
-    for i, p_name in enumerate(players_to_show):
+    sum_cols = st.columns(2)
+    for i, p_name in enumerate(["Player 1", "Player 2"]):
         with sum_cols[i]:
-            if p_name == "全員":
-                p_df = df_this_month
-            else:
-                p_df = df_this_month[df_this_month['player'] == p_name]
-            
+            p_df = df_this_month[df_this_month['player'] == p_name]
             p_bal = p_df['balance'].sum()
             p_hours = p_df['hours'].sum()
             p_hourly = p_bal / p_hours if p_hours > 0 else 0
             
             st.markdown(f"""
-            <div style="padding:10px; border:1px solid rgba(0,242,255,0.2); border-radius:10px; background:rgba(0,242,255,0.05);">
-                <div style="font-weight:bold; color:#00f2ff; margin-bottom:5px;">{p_name} ({datetime.now().strftime('%m月')})</div>
-                <div style="font-size:1.2em; font-weight:bold;">¥{int(p_bal):,}</div>
+            <div style="padding:10px; border:1px solid rgba(0,242,255,0.2); border-radius:10px; background:rgba(0,242,255,0.05); text-align:center;">
+                <div style="font-weight:bold; color:#00f2ff; margin-bottom:5px;">{p_name} ({datetime.now().strftime('%m月')}収支)</div>
+                <div style="font-size:1.4em; font-weight:bold;">¥{int(p_bal):,}</div>
                 <div style="font-size:0.8em; opacity:0.8;">{p_hours:.1f}h | ¥{int(p_hourly):,}/h</div>
             </div>
             """, unsafe_allow_html=True)
@@ -270,7 +263,7 @@ if menu == "ホーム・記録":
         st.session_state.selected_cal_date = selected_date_picker.strftime("%Y-%m-%d")
     else:
         # Player Filter for Calendar
-        p_cal = st.radio("表示プレイヤー", ["Player 1", "Player 2", "全員"], horizontal=True, key="cal_p_selector", index=2)
+        p_cal = st.radio("表示切り替え", ["Player 1", "Player 2"], horizontal=True, key="cal_p_selector", index=0)
         
         # Prepare calendar events
         events = []
@@ -291,21 +284,20 @@ if menu == "ホーム・記録":
                         events.append({"title": name, "start": d_str, "allDay": True, "textColor": "#ff4b4b", "backgroundColor": "transparent", "borderColor": "transparent"})
 
         # 2. Add Profit/Loss
-        cal_df = df.copy() if p_cal == "全員" else df[df['player'] == p_cal]
+        cal_df = df[df['player'] == p_cal].copy()
         if not cal_df.empty:
             daily_summary = cal_df.groupby('date')['balance'].sum().reset_index()
-            for _, row in daily_summary.iterrows():
                 bal = int(row['balance'])
-                color = "#00f2ff" if bal >= 0 else "#ff4b4b"
+                color = "#ffffff" if bal >= 0 else "#ff4b4b"
                 sign = "+" if bal >= 0 else ""
                 events.append({
                     "id": f"summary_{row['date']}",
                     "title": f"{sign}{bal:,}円",
                     "start": row['date'],
                     "allDay": True,
-                    "backgroundColor": f"{color}33",
-                    "borderColor": color,
-                    "textColor": "#ffffff",
+                    "backgroundColor": "transparent",
+                    "borderColor": "transparent",
+                    "textColor": color,
                     "extendedProps": {"type": "summary", "date": row['date']}
                 })
         
