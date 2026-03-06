@@ -261,17 +261,15 @@ if menu == "ホーム・記録":
             
             # Click Handling
             res = cal_res
-            # Temporary Debug Output (only shows if something happened)
             if res and "callback" in res:
-                st.caption(f"Debug: Callback={res.get('callback')} Date={res.get('dateClick', {}).get('dateStr') or res.get('select', {}).get('startStr')}")
-                
                 cb = res.get("callback")
                 t_d = None
                 
+                # Check for various event types and normalize data extraction
                 if cb == "dateClick":
-                    t_d = res.get("dateClick", {}).get("dateStr")
+                    t_d = res.get("dateClick", {}).get("dateStr") or res.get("dateClick", {}).get("date")
                 elif cb == "select":
-                    t_d = res.get("select", {}).get("startStr")
+                    t_d = res.get("select", {}).get("startStr") or res.get("select", {}).get("start")
                 elif cb == "eventClick":
                     props = res.get("eventClick", {}).get("event", {}).get("extendedProps", {})
                     if props.get("type") == "summary":
@@ -280,13 +278,13 @@ if menu == "ホーム・記録":
                         if not day_q.empty:
                             st.session_state.editing_id = day_q.iloc[0]['id']
                 
-                if t_d:
-                    if cb != "eventClick":
-                        st.session_state.editing_id = None
-                    st.session_state.selected_cal_date = str(t_d).split("T")[0]
-                    st.rerun()
+                # Debug output to help verify why t_d might be None
+                if not t_d and cb in ["dateClick", "select"]:
+                    st.caption(f"Debug: {cb} data received but date string not found in {list(res.get(cb, {}).keys())}")
+                else:
+                    st.caption(f"Debug: Callback={cb} Date={t_d}")
 
-                # Month view change (navigation)
+                # Check for month view change (navigation)
                 if cb == "viewDidMount" or "view" in res:
                     v_start = res.get("view", {}).get("activeStart")
                     if v_start:
@@ -294,6 +292,12 @@ if menu == "ホーム・記録":
                         if st.session_state.view_month != new_view_month:
                             st.session_state.view_month = new_view_month
                             st.rerun()
+
+                if t_d:
+                    if cb != "eventClick":
+                        st.session_state.editing_id = None
+                    st.session_state.selected_cal_date = str(t_d).split("T")[0]
+                    st.rerun()
     else:
         # --- FORM VIEW ---
         st.markdown(f"### 📅 {curr_date_str.replace('-', '/')} の記録")
