@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timezone, timedelta
 import json
+import holidays
+from streamlit_calendar import calendar
 from io import StringIO
 
 # --- Page Config ---
@@ -572,6 +574,96 @@ if menu == "ホーム・記録":
             render_history_list("Player 1")
         with tab_p2:
             render_history_list("Player 2")
+
+    st.divider()
+    st.subheader("履歴カレンダー (祝日対応)")
+    
+    # Player Filter for Calendar
+    p_cal = st.radio("表示プレイヤー", ["Player 1", "Player 2", "全員"], horizontal=True, key="cal_p_selector")
+    
+    # Prepare calendar events
+    jp_holidays = holidays.Japan()
+    events = []
+    
+    # 1. Add Holidays as Events
+    # Get range of dates from data to identify which years to load holidays for
+    if not df.empty:
+        df_dates = pd.to_datetime(df['date'])
+        start_year = df_dates.min().year
+        end_year = df_dates.max().year
+        # Current year as well
+        cur_year = datetime.now(JST).year
+        
+        for y in range(min(start_year, cur_year), max(end_year, cur_year) + 1):
+            for date, name in sorted(holidays.Japan(years=y).items()):
+                events.append({
+                    "title": f"㊗️ {name}",
+                    "start": date.strftime("%Y-%m-%d"),
+                    "allDay": True,
+                    "backgroundColor": "#ff4b4b22",
+                    "borderColor": "#ff4b4b",
+                    "textColor": "#ff4b4b",
+                    "display": "background"
+                })
+                # Duplicate as title event so it's visible
+                events.append({
+                    "title": name,
+                    "start": date.strftime("%Y-%m-%d"),
+                    "allDay": True,
+                    "backgroundColor": "transparent",
+                    "borderColor": "transparent",
+                    "textColor": "#ff4b4b",
+                })
+
+    # 2. Add Profit/Loss as Events
+    cal_df = df.copy() if p_cal == "全員" else df[df['player'] == p_cal]
+    if not cal_df.empty:
+        # Group by date to show daily total
+        daily_summary = cal_df.groupby('date')['balance'].sum().reset_index()
+        for _, row in daily_summary.iterrows():
+            bal = int(row['balance'])
+            color = "#00f2ff" if bal >= 0 else "#ff4b4b"
+            sign = "+" if bal >= 0 else ""
+            events.append({
+                "title": f"{sign}{bal:,}円",
+                "start": row['date'],
+                "allDay": True,
+                "backgroundColor": f"{color}33",
+                "borderColor": color,
+                "textColor": "#ffffff",
+            })
+
+    calendar_options = {
+        "editable": False,
+        "selectable": False,
+        "headerToolbar": {
+            "left": "today prev,next",
+            "center": "title",
+            "right": "dayGridMonth",
+        },
+        "initialView": "dayGridMonth",
+        "locale": "ja",
+    }
+    
+    custom_css="""
+        .fc-event-title {
+            font-weight: bold;
+            font-size: 0.85em;
+        }
+        .fc-daygrid-day-number {
+            color: #00f2ff !important;
+            text-decoration: none !important;
+        }
+        .fc-col-header-cell-cushion {
+            color: #00f2ff !important;
+            text-decoration: none !important;
+        }
+        .fc-toolbar-title {
+            color: #00f2ff !important;
+        }
+    """
+    
+    calendar(events=events, options=calendar_options, custom_css=custom_css)
 
 elif menu == "分析 (月別/年別)":
     st.subheader("収支統計")

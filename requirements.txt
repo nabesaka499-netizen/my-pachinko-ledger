@@ -3,3 +3,5 @@ pandas
 gspread
 google-auth
 oauth2client
+streamlit-calendar
+holidays
