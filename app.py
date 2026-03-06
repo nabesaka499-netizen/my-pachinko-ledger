@@ -44,6 +44,8 @@ if "selected_cal_date" not in st.session_state:
     st.session_state.selected_cal_date = None
 if "editing_id" not in st.session_state:
     st.session_state.editing_id = None
+if "view_month" not in st.session_state:
+    st.session_state.view_month = datetime.now().strftime("%Y-%m")
 
 # --- Helper Functions ---
 def get_github_auth():
@@ -182,13 +184,26 @@ if menu == "ホーム・記録":
             p_sel = st.radio("表示プレイヤー", ["Player 1", "Player 2"], horizontal=True, index=p_idx, key="p_main")
             st.session_state.active_p = p_sel # Update state
         
-        # Monthly Summary for Selected Player
-        curr_m = datetime.now().strftime("%Y-%m")
+        # Monthly Summary for Selected Player (Synced with Calendar View)
+        v_m = st.session_state.view_month
         df_m = df.copy()
         df_m['month'] = pd.to_datetime(df['date']).dt.strftime('%Y-%m')
-        p_bal = df_m[(df_m['month'] == curr_m) & (df_m['player'] == st.session_state.active_p)]['balance'].sum()
+        p_data = df_m[(df_m['month'] == v_m) & (df_m['player'] == st.session_state.active_p)]
+        p_bal = p_data['balance'].sum()
+        p_hours = p_data['hours'].sum()
+        p_hourly = p_bal / p_hours if p_hours > 0 else 0
+        
         with c_h2:
-            st.metric(f"{st.session_state.active_p} の今月の収支合計", f"¥{int(p_bal):,}")
+            try:
+                m_label = datetime.strptime(v_m, "%Y-%m").strftime("%m月")
+            except:
+                m_label = v_m
+            
+            # Using 3 columns for metrics to keep it clean
+            m1, m2, m3 = st.columns(3)
+            m1.metric(f"{m_label}収支", f"¥{int(p_bal):,}")
+            m2.metric("稼働時間", f"{p_hours:.1f}h")
+            m3.metric("平均時給", f"¥{int(p_hourly):,}")
         st.divider()
 
         if not CALENDAR_AVAILABLE:
@@ -244,6 +259,14 @@ if menu == "ホーム・記録":
             if res:
                 cb = res.get("callback")
                 t_d = None
+                
+                # Update view month if changed
+                if "view" in res:
+                    new_view_month = pd.to_datetime(res["view"]["activeStart"]).strftime("%Y-%m")
+                    if st.session_state.view_month != new_view_month:
+                        st.session_state.view_month = new_view_month
+                        st.rerun()
+
                 if cb == "dateClick":
                     t_d = res.get("dateClick", {}).get("dateStr")
                 elif cb == "select":
@@ -349,19 +372,110 @@ if menu == "ホーム・記録":
                 st.rerun()
 
 elif menu == "分析 (月別/年別)":
-    st.subheader("収支統計分析")
+    st.subheader("収支統計")
     if df.empty:
-        st.info("データがありません。")
+        st.warning("データがありません。")
     else:
-        df['date_dt'] = pd.to_datetime(df['date'])
-        df['month'] = df['date_dt'].dt.strftime('%Y-%m')
-        p_idx = 1 if st.session_state.active_p == "Player 1" else 2
-        p_sel = st.selectbox("プレイヤー選択", ["全員", "Player 1", "Player 2"], index=p_idx)
-        d_v = df if p_sel == "全員" else df[df['player'] == p_sel]
-        if not d_v.empty:
-            m_sum = d_v.groupby('month')['balance'].sum().sort_index(ascending=False)
-            st.bar_chart(m_sum)
-            st.dataframe(m_sum)
+        # Player Filter Tabs
+        tab_p1, tab_p2, tab_all = st.tabs(["Player 1", "Player 2", "全員"])
+        
+        def show_analysis(filter_p):
+            if filter_p == "全員":
+                df_v = df.copy()
+            else:
+                df_v = df[df['player'] == filter_p].copy()
+            
+            if df_v.empty:
+                st.warning("データがありません。")
+                return
+
+            # --- Date Range Filter ---
+            df_v['date_dt'] = pd.to_datetime(df_v['date'])
+            min_date = df_v['date_dt'].min().date()
+            max_date = df_v['date_dt'].max().date()
+            
+            col_d1, col_d2 = st.columns(2)
+            with col_d1:
+                start_date = st.date_input(f"{filter_p} - 開始日", min_date, key=f"start_{filter_p}")
+            with col_d2:
+                end_date = st.date_input(f"{filter_p} - 終了日", max_date, key=f"end_{filter_p}")
+            
+            # Application of filter
+            df_v = df_v[(df_v['date_dt'].dt.date >= start_date) & (df_v['date_dt'].dt.date <= end_date)]
+
+            if df_v.empty:
+                st.info("指定された期間のデータはありません。")
+                return
+
+            # Metrics
+            t_bal = df_v['balance'].sum()
+            t_hours = df_v['hours'].sum()
+            h_ly = t_bal / t_hours if t_hours > 0 else 0
+            
+            mc1, mc2, mc3 = st.columns(3)
+            mc1.metric("トータル収支", f"¥{int(t_bal):,}")
+            mc2.metric("合計稼働時間", f"{t_hours:.1f}h")
+            mc3.metric("平均時給", f"¥{int(h_ly):,}")
+            
+            # --- Periodic Summaries (3, 6, 9 months, 1 year) ---
+            st.markdown("#### 直近サマリー (全期間から算出)")
+            p_cols = st.columns(4)
+            now_dt = pd.Timestamp.now()
+            
+            # Use data filtered by player but NOT by the specific date range for these "Recent" summaries
+            if filter_p == "全員":
+                df_recent_base = df.copy()
+            else:
+                df_recent_base = df[df['player'] == filter_p].copy()
+            df_recent_base['date_dt'] = pd.to_datetime(df_recent_base['date'])
+
+            for i, months in enumerate([3, 6, 9, 12]):
+                start_p = now_dt - pd.DateOffset(months=months)
+                label = f"{months}ヶ月" if months < 12 else "1年"
+                df_p = df_recent_base[df_recent_base['date_dt'] >= start_p]
+                
+                p_bal = df_p['balance'].sum()
+                p_hours = df_p['hours'].sum()
+                p_hourly = p_bal / p_hours if p_hours > 0 else 0
+                
+                with p_cols[i]:
+                    st.markdown(f"""
+                    <div style="padding:10px; border:1px solid rgba(0,242,255,0.2); border-radius:10px; background:rgba(0,242,255,0.05); text-align:center;">
+                        <div style="font-weight:bold; color:#00f2ff; font-size:0.9em;">直近{label}</div>
+                        <div style="font-size:1.1em; font-weight:bold; margin:5px 0;">¥{int(p_bal):,}</div>
+                        <div style="font-size:0.8em; opacity:0.8;">{p_hours:.1f}h | ¥{int(p_hourly):,}/h</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+            st.write("")
+
+            # Yearly/Monthly aggregation
+            df_v['year'] = df_v['date_dt'].dt.year
+            df_v['month'] = df_v['date_dt'].dt.strftime('%Y/%m')
+            
+            v_type = st.radio(f"{filter_p} - 表示単位", ["月別", "年別"], horizontal=True, key=f"v_type_{filter_p}")
+            g_col = 'month' if v_type == "月別" else 'year'
+        
+            summ = df_v.groupby(g_col).agg({
+                'balance': 'sum',
+                'hours': 'sum'
+            }).sort_index(ascending=False)
+            
+            import numpy as np
+            summ['balance'] = summ['balance'].astype(int)
+            summ['時給'] = (summ['balance'] / summ['hours'].replace(0, np.nan)).fillna(0).astype(int)
+            
+            st.dataframe(summ.style.format({
+                'balance': '¥{:,}',
+                'hours': '{:.1f}h',
+                '時給': '¥{:,}'
+            }), use_container_width=True)
+
+        with tab_p1:
+            show_analysis("Player 1")
+        with tab_p2:
+            show_analysis("Player 2")
+        with tab_all:
+            show_analysis("全員")
 
 elif menu == "一括インポート":
     st.subheader("一括インポート")
