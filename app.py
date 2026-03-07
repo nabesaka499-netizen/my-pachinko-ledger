@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, time, date
 import json
 import requests
 import base64
@@ -364,17 +364,46 @@ if menu == "ホーム・記録":
             l_sav = get_last_hall_savings(df, f_p, hall)
             s_s = st.number_input("開始貯メダル/玉", min_value=0, value=int(e_row['start_savings'] if e_row is not None else l_sav))
             s_e = st.number_input("終了貯メダル/玉", min_value=0, value=int(e_row['end_savings'] if e_row is not None else 0))
-            hr = st.slider("時間 (h)", 0.0, 16.0, step=0.5, value=float(e_row['hours']) if e_row is not None else 0.0)
+            
+            # --- Start and End Time Inputs ---
+            default_start = time(10, 0)
+            default_end = time(12, 0)
+            if e_row is not None and pd.notna(e_row.get('start_time')) and e_row['start_time']:
+                try:
+                    default_start = datetime.strptime(e_row['start_time'], "%H:%M").time()
+                except Exception:
+                    pass
+            if e_row is not None and pd.notna(e_row.get('end_time')) and e_row['end_time']:
+                try:
+                    default_end = datetime.strptime(e_row['end_time'], "%H:%M").time()
+                except Exception:
+                    pass
+
+            c_t1, c_t2 = st.columns(2)
+            with c_t1:
+                start_time = st.time_input("開始時間", value=default_start)
+            with c_t2:
+                end_time = st.time_input("終了時間", value=default_end)
+            
+            # Dynamic hours calculation (handling cross-midnight)
+            dummy_d = date.today()
+            dt_start = datetime.combine(dummy_d, start_time)
+            dt_end = datetime.combine(dummy_d, end_time)
+            if dt_end < dt_start:
+                dt_end += timedelta(days=1)
+            
+            delta_hr = (dt_end - dt_start).total_seconds() / 3600.0
+            st.info(f"⏳ **稼働時間: {delta_hr:.1f} 時間** (保存前に確認)")
 
         if st.button("保存する", use_container_width=True, type="primary"):
             bal = round((s_e - s_s) * (100 / rate) - invest)
             n_row = {
                 "id": e_id if e_id else str(int(datetime.now().timestamp())),
                 "player": f_p, "game_type": gt, "date": str(curr_date_str),
-                "hall": hall, "machine": mach, "hours": hr,
+                "hall": hall, "machine": mach, "hours": round(delta_hr, 1),
                 "invest": invest, "start_savings": s_s, "end_savings": s_e,
                 "rate": rate, "balance": bal, "memo": memo,
-                "start_time": "", "end_time": "", "cash_out_yen": 0
+                "start_time": start_time.strftime("%H:%M"), "end_time": end_time.strftime("%H:%M"), "cash_out_yen": 0
             }
             if e_id:
                 df = df[df['id'] != e_id]
