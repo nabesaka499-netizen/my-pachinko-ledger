@@ -255,6 +255,7 @@ if menu == "ホーム・記録":
                 events=events,
                 options=cal_opts,
                 custom_css=".fc-daygrid-day-number, .fc-toolbar-title { color: #00f2ff !important; } .fc-daygrid-day { cursor: pointer; }",
+                callbacks=['dateClick', 'eventClick', 'select', 'datesSet'],
                 key="main_cal"
             )
             
