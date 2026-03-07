@@ -243,7 +243,7 @@ if menu == "ホーム・記録":
                     pass
 
             cal_opts = {
-                "headerToolbar": {"left": "prev,next today", "center": "title", "right": "dayGridMonth"},
+                "headerToolbar": {"left": "prev,next", "center": "title", "right": ""},
                 "locale": "ja",
                 "height": 700,
                 "selectable": True,
