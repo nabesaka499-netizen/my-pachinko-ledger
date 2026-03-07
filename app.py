@@ -286,7 +286,15 @@ if menu == "ホーム・記録":
                 if t_d:
                     if cb != "eventClick":
                         st.session_state.editing_id = None
-                    clean_date = str(t_d).split("T")[0]
+                    try:
+                        # Reliably convert UTC ISO strings to JST to prevent 1-day offsets
+                        dt = pd.to_datetime(t_d)
+                        if dt.tzinfo is not None:
+                            dt = dt.tz_convert('Asia/Tokyo')
+                        clean_date = dt.strftime("%Y-%m-%d")
+                    except Exception:
+                        clean_date = str(t_d).split("T")[0]
+                        
                     st.session_state.selected_cal_date = clean_date
                     st.rerun()
 
@@ -294,7 +302,14 @@ if menu == "ホーム・記録":
                 if "view" in res:
                     v_start = res["view"].get("activeStart")
                     if v_start:
-                        new_view_month = pd.to_datetime(v_start).strftime("%Y-%m")
+                        try:
+                            dt_v = pd.to_datetime(v_start)
+                            if dt_v.tzinfo is not None:
+                                dt_v = dt_v.tz_convert('Asia/Tokyo')
+                            new_view_month = dt_v.strftime("%Y-%m")
+                        except Exception:
+                            new_view_month = pd.to_datetime(v_start).strftime("%Y-%m")
+                            
                         if st.session_state.view_month != new_view_month:
                             st.session_state.view_month = new_view_month
                             st.rerun()
