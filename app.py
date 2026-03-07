@@ -332,10 +332,8 @@ if menu == "ホーム・記録":
         
         col1, col2 = st.columns(2)
         with col1:
-            # Sync player state
-            p_idx = 0 if st.session_state.active_p == "Player 1" else 1
-            f_p = st.radio("プレイヤー", ["Player 1", "Player 2"], horizontal=True, index=p_idx, key="form_p_radio")
-            st.session_state.active_p = f_p
+            # Sync player state from home screen
+            f_p = st.session_state.active_p
             
             h_list = sorted(df['hall'].dropna().unique().tolist())
             last_h, last_m = get_last_player_defaults(df, f_p)
