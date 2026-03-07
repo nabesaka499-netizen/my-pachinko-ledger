@@ -188,6 +188,8 @@ if menu == "ホーム・記録":
         
         # Monthly Summary for Selected Player (Synced with Calendar View)
         v_m = st.session_state.view_month
+        v_dt = pd.to_datetime(v_m + "-01")
+        
         df_m = df.copy()
         df_m['month'] = pd.to_datetime(df['date']).dt.strftime('%Y-%m')
         p_data = df_m[(df_m['month'] == v_m) & (df_m['player'] == st.session_state.active_p)]
@@ -196,17 +198,29 @@ if menu == "ホーム・記録":
         p_hourly = p_bal / p_hours if p_hours > 0 else 0
         
         with c_h2:
-            try:
-                m_label = datetime.strptime(v_m, "%Y-%m").strftime("%m月")
-            except:
-                m_label = v_m
-            
             # Using 3 columns for metrics to keep it clean
             m1, m2, m3 = st.columns(3)
-            m1.metric(f"{m_label}収支", f"¥{int(p_bal):,}")
+            m1.metric(f"{v_dt.strftime('%m月')}収支", f"¥{int(p_bal):,}")
             m2.metric("稼働時間", f"{p_hours:.1f}h")
             m3.metric("平均時給", f"¥{int(p_hourly):,}")
         st.divider()
+
+        # --- Custom Month Navigation ---
+        nav_c1, nav_c2, nav_c3 = st.columns([1, 6, 1])
+        with nav_c1:
+            if st.button("◀ 前月", use_container_width=True):
+                st.session_state.view_month = (v_dt - pd.DateOffset(months=1)).strftime("%Y-%m")
+                if "main_cal" in st.session_state:
+                    del st.session_state["main_cal"]
+                st.rerun()
+        with nav_c2:
+            st.markdown(f"<h3 style='text-align: center; color: #00f2ff; margin-top: 0;'>{v_dt.strftime('%Y年%m月')}</h3>", unsafe_allow_html=True)
+        with nav_c3:
+            if st.button("次月 ▶", use_container_width=True):
+                st.session_state.view_month = (v_dt + pd.DateOffset(months=1)).strftime("%Y-%m")
+                if "main_cal" in st.session_state:
+                    del st.session_state["main_cal"]
+                st.rerun()
 
         if not CALENDAR_AVAILABLE:
             st.info("カレンダー機能を準備中です。")
@@ -243,7 +257,8 @@ if menu == "ホーム・記録":
                     pass
 
             cal_opts = {
-                "headerToolbar": {"left": "prev,next", "center": "title", "right": ""},
+                "headerToolbar": False,
+                "initialDate": f"{st.session_state.view_month}-01",
                 "locale": "ja",
                 "height": 700,
                 "selectable": True,
@@ -255,7 +270,7 @@ if menu == "ホーム・記録":
                 events=events,
                 options=cal_opts,
                 custom_css=".fc-daygrid-day-number, .fc-toolbar-title { color: #00f2ff !important; } .fc-daygrid-day { cursor: pointer; }",
-                callbacks=['dateClick', 'eventClick', 'select', 'datesSet'],
+                callbacks=['dateClick', 'eventClick', 'select'],
                 key="main_cal"
             )
             
@@ -299,28 +314,7 @@ if menu == "ホーム・記録":
                     st.session_state.selected_cal_date = clean_date
                     st.rerun()
 
-                # 3. Priority 2: Handle month navigation if no date was clicked
-                if "view" in res or cb == "datesSet":
-                    v_start = res.get("view", {}).get("activeStart")
-                    if not v_start and cb == "datesSet":
-                        v_start = res.get("datesSet", {}).get("startStr") or res.get("datesSet", {}).get("view", {}).get("activeStart")
-                    
-                    if v_start:
-                        try:
-                            # v_start is often the first visible day on the calendar grid, which might be in the previous month.
-                            # Adding 15 days ensures we always land in the actual "target" month being viewed.
-                            dt_v = pd.to_datetime(v_start)
-                            if dt_v.tzinfo is not None:
-                                dt_v = dt_v.tz_convert('Asia/Tokyo')
-                            dt_v = dt_v + pd.Timedelta(days=15)
-                            new_view_month = dt_v.strftime("%Y-%m")
-                        except Exception:
-                            # Fallback if datetime parsing fails
-                            new_view_month = str(v_start).split("T")[0][:7]
-                            
-                        if st.session_state.view_month != new_view_month:
-                            st.session_state.view_month = new_view_month
-                            st.rerun()
+                # Removed internal month navigation processing since it's now handled entirely by Streamlit buttons
     else:
         # --- FORM VIEW ---
         st.markdown(f"### 📅 {curr_date_str.replace('-', '/')} の記録")
