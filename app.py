@@ -168,8 +168,9 @@ if st.session_state.p_menu != menu:
     if menu == "ホーム・記録":
         st.session_state.selected_cal_date = None
         st.session_state.editing_id = None
-        if "main_cal" in st.session_state:
-            del st.session_state["main_cal"]
+        for k in list(st.session_state.keys()):
+            if str(k).startswith("main_cal"):
+                del st.session_state[k]
     st.session_state.p_menu = menu
 
 if menu == "ホーム・記録":
@@ -210,16 +211,18 @@ if menu == "ホーム・記録":
         with nav_c1:
             if st.button("◀ 前月", use_container_width=True):
                 st.session_state.view_month = (v_dt - pd.DateOffset(months=1)).strftime("%Y-%m")
-                if "main_cal" in st.session_state:
-                    del st.session_state["main_cal"]
+                for k in list(st.session_state.keys()):
+                    if str(k).startswith("main_cal"):
+                        del st.session_state[k]
                 st.rerun()
         with nav_c2:
             st.markdown(f"<h3 style='text-align: center; color: #00f2ff; margin-top: 0;'>{v_dt.strftime('%Y年%m月')}</h3>", unsafe_allow_html=True)
         with nav_c3:
             if st.button("次月 ▶", use_container_width=True):
                 st.session_state.view_month = (v_dt + pd.DateOffset(months=1)).strftime("%Y-%m")
-                if "main_cal" in st.session_state:
-                    del st.session_state["main_cal"]
+                for k in list(st.session_state.keys()):
+                    if str(k).startswith("main_cal"):
+                        del st.session_state[k]
                 st.rerun()
 
         if not CALENDAR_AVAILABLE:
@@ -271,7 +274,7 @@ if menu == "ホーム・記録":
                 options=cal_opts,
                 custom_css=".fc-daygrid-day-number, .fc-toolbar-title { color: #00f2ff !important; } .fc-daygrid-day { cursor: pointer; }",
                 callbacks=['dateClick', 'eventClick', 'select'],
-                key="main_cal"
+                key=f"main_cal_{st.session_state.view_month}"
             )
             
             # Click Handling
@@ -326,8 +329,9 @@ if menu == "ホーム・記録":
         if ctx_c2.button("🔙 戻る", use_container_width=True):
             st.session_state.selected_cal_date = None
             st.session_state.editing_id = None
-            if "main_cal" in st.session_state:
-                del st.session_state["main_cal"]
+            for k in list(st.session_state.keys()):
+                if str(k).startswith("main_cal"):
+                    del st.session_state[k]
             st.rerun()
 
         e_row = df[df['id'] == e_id].iloc[0] if e_id and not df[df['id'] == e_id].empty else None
@@ -417,8 +421,9 @@ if menu == "ホーム・記録":
             
             st.session_state.selected_cal_date = None
             st.session_state.editing_id = None
-            if "main_cal" in st.session_state:
-                del st.session_state["main_cal"]
+            for k in list(st.session_state.keys()):
+                if str(k).startswith("main_cal"):
+                    del st.session_state[k]
             st.success("保存完了！")
             st.rerun()
 
@@ -428,8 +433,9 @@ if menu == "ホーム・記録":
                 save_data(df)
                 st.session_state.selected_cal_date = None
                 st.session_state.editing_id = None
-                if "main_cal" in st.session_state:
-                    del st.session_state["main_cal"]
+                for k in list(st.session_state.keys()):
+                    if str(k).startswith("main_cal"):
+                        del st.session_state[k]
                 st.rerun()
 
 elif menu == "分析 (月別/年別)":
