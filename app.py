@@ -264,11 +264,16 @@ if menu == "ホーム・記録":
                 cb = res.get("callback")
                 t_d = None
                 
-                # 1. Capture date selection primary triggers
+                # 1. Capture date selection primary triggers with robust key checking
                 if cb == "dateClick":
-                    t_d = res.get("dateClick", {}).get("dateStr")
+                    cd = res.get("dateClick", {})
+                    t_d = cd.get("dateStr") or cd.get("date") or cd.get("start") or cd.get("startStr")
                 elif cb == "select":
-                    t_d = res.get("select", {}).get("startStr")
+                    cs = res.get("select", {})
+                    t_d = cs.get("startStr") or cs.get("start") or cs.get("date") or cs.get("dateStr")
+                elif cb == "navLinkDayClick":
+                    cn = res.get("navLinkDayClick", {})
+                    t_d = cn.get("dateStr") or cn.get("date")
                 elif cb == "eventClick":
                     props = res.get("eventClick", {}).get("event", {}).get("extendedProps", {})
                     if props.get("type") == "summary":
