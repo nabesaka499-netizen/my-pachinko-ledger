@@ -247,21 +247,36 @@ if menu == "ホーム・記録":
                         "textColor": color,
                         "extendedProps": {"type": "summary", "date": r['date']}
                     })
+                # Dynamic starting day of week
+                first_day = (v_dt.dayofweek + 1) % 7
+                
+                # Base custom CSS (including weekend colors)
+                custom_css = """
+                .fc-daygrid-day-number, .fc-toolbar-title { color: #00f2ff !important; }
+                .fc-daygrid-day { cursor: pointer; }
+                .fc-col-header-cell-cushion { cursor: default; }
+                .fc-day-sat .fc-col-header-cell-cushion, .fc-day-sat .fc-daygrid-day-number { color: #4b8bff !important; }
+                .fc-day-sun .fc-col-header-cell-cushion, .fc-day-sun .fc-daygrid-day-number { color: #ff4b4b !important; }
+                """
+                
                 # Holidays
                 try:
                     for d, n in holidays.Japan(years=range(2024, 2027)).items():
+                        date_str = d.strftime("%Y-%m-%d")
                         events.append({
                             "title": n,
-                            "start": d.strftime("%Y-%m-%d"),
+                            "start": date_str,
                             "display": "background",
                             "backgroundColor": "#ff4b4b1a"
                         })
+                        custom_css += f'.fc-day[data-date="{date_str}"] .fc-daygrid-day-number {{ color: #ff4b4b !important; }}\n'
                 except Exception:
                     pass
 
             cal_opts = {
                 "headerToolbar": False,
                 "initialDate": f"{st.session_state.view_month}-01",
+                "firstDay": int(first_day),
                 "locale": "ja",
                 "height": 700,
                 "selectable": True,
@@ -272,7 +287,7 @@ if menu == "ホーム・記録":
             cal_res = calendar(
                 events=events,
                 options=cal_opts,
-                custom_css=".fc-daygrid-day-number, .fc-toolbar-title { color: #00f2ff !important; } .fc-daygrid-day { cursor: pointer; }",
+                custom_css=custom_css,
                 callbacks=['dateClick', 'eventClick', 'select'],
                 key=f"main_cal_{st.session_state.view_month}"
             )
