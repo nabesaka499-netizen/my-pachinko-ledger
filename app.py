@@ -303,16 +303,19 @@ if menu == "ホーム・記録":
                 if "view" in res or cb == "datesSet":
                     v_start = res.get("view", {}).get("activeStart")
                     if not v_start and cb == "datesSet":
-                        # Sometimes activeStart is inside the datesSet object directly
                         v_start = res.get("datesSet", {}).get("startStr") or res.get("datesSet", {}).get("view", {}).get("activeStart")
                     
                     if v_start:
                         try:
+                            # v_start is often the first visible day on the calendar grid, which might be in the previous month.
+                            # Adding 15 days ensures we always land in the actual "target" month being viewed.
                             dt_v = pd.to_datetime(v_start)
                             if dt_v.tzinfo is not None:
                                 dt_v = dt_v.tz_convert('Asia/Tokyo')
+                            dt_v = dt_v + pd.Timedelta(days=15)
                             new_view_month = dt_v.strftime("%Y-%m")
                         except Exception:
+                            # Fallback if datetime parsing fails
                             new_view_month = str(v_start).split("T")[0][:7]
                             
                         if st.session_state.view_month != new_view_month:
