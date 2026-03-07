@@ -299,8 +299,12 @@ if menu == "ホーム・記録":
                     st.rerun()
 
                 # 3. Priority 2: Handle month navigation if no date was clicked
-                if "view" in res:
-                    v_start = res["view"].get("activeStart")
+                if "view" in res or cb == "datesSet":
+                    v_start = res.get("view", {}).get("activeStart")
+                    if not v_start and cb == "datesSet":
+                        # Sometimes activeStart is inside the datesSet object directly
+                        v_start = res.get("datesSet", {}).get("startStr") or res.get("datesSet", {}).get("view", {}).get("activeStart")
+                    
                     if v_start:
                         try:
                             dt_v = pd.to_datetime(v_start)
@@ -308,7 +312,7 @@ if menu == "ホーム・記録":
                                 dt_v = dt_v.tz_convert('Asia/Tokyo')
                             new_view_month = dt_v.strftime("%Y-%m")
                         except Exception:
-                            new_view_month = pd.to_datetime(v_start).strftime("%Y-%m")
+                            new_view_month = str(v_start).split("T")[0][:7]
                             
                         if st.session_state.view_month != new_view_month:
                             st.session_state.view_month = new_view_month
