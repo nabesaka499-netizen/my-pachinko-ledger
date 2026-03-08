@@ -383,10 +383,8 @@ if menu == "ホーム・記録":
                         if not day_q.empty:
                             st.session_state.editing_id = day_q.iloc[0]['id']
                 
-                # 2. Priority 1: If a date was selected, GO to form view
+                # 2. Priority 1: If a date was selected, GO to preview view instead of form
                 if t_d:
-                    if cb != "eventClick":
-                        st.session_state.editing_id = None
                     try:
                         # Reliably convert UTC ISO strings to JST to prevent 1-day offsets
                         dt = pd.to_datetime(t_d)
@@ -396,12 +394,61 @@ if menu == "ホーム・記録":
                     except Exception:
                         clean_date = str(t_d).split("T")[0]
                         
-                    st.session_state.selected_cal_date = clean_date
+                    # Show preview instead of direct form
+                    st.session_state.preview_date = clean_date
+                    st.session_state.selected_cal_date = None
+                    st.session_state.editing_id = None
                     st.rerun()
 
                 # Removed internal month navigation processing since it's now handled entirely by Streamlit buttons
+                
+        # --- PREVIEW VIEW (Day detail & Add new) ---
+        p_date = st.session_state.get("preview_date")
+        if p_date:
+            st.markdown(f"### 🔍 {p_date.replace('-', '/')} の記録詳細")
+            day_records = df[df['date'] == p_date]
+            
+            if day_records.empty:
+                st.info("この日の記録はありません。")
+            else:
+                for idx, row in day_records.iterrows():
+                    with st.container(border=True):
+                        c0, c1, c2, c3, c4 = st.columns([2, 2, 2, 2, 2])
+                        c0.markdown(f"**{row['player']}**")
+                        c1.markdown(f"**店舗:** {row['hall']}")
+                        c2.markdown(f"**時間:** {row.get('start_time', '--')} - {row.get('end_time', '--')}")
+                        c3.markdown(f"**収支:** ¥{int(row['balance']):,}")
+                        
+                        btn_col1, btn_col2 = c4.columns(2)
+                        if btn_col1.button("✏️ 編集", key=f"edit_{row['id']}", use_container_width=True):
+                            st.session_state.editing_id = row['id']
+                            st.session_state.selected_cal_date = p_date
+                            st.session_state.preview_date = None
+                            st.rerun()
+                            
+                        # Delete functionality from preview
+                        if btn_col2.button("🗑️", key=f"del_{row['id']}", type="primary", use_container_width=True):
+                            df = df[df['id'] != row['id']]
+                            save_data(df)
+                            st.success("削除しました。")
+                            st.rerun()
+
+            st.write("")
+            if st.button("➕ この日に新規記録を追加", use_container_width=True, type="primary"):
+                st.session_state.selected_cal_date = p_date
+                st.session_state.editing_id = None
+                st.session_state.preview_date = None
+                st.rerun()
+            
+            if st.button("✖ 閉じる", use_container_width=True):
+                st.session_state.preview_date = None
+                st.rerun()
+
+            st.markdown("---")
+            
     else:
         # --- FORM VIEW ---
+
         st.markdown(f"### 📅 {curr_date_str.replace('-', '/')} の記録")
         st.divider()
         e_id = st.session_state.get("editing_id")
@@ -411,6 +458,7 @@ if menu == "ホーム・記録":
         if ctx_c2.button("🔙 戻る", use_container_width=True):
             st.session_state.selected_cal_date = None
             st.session_state.editing_id = None
+            st.session_state.preview_date = None
             for k in list(st.session_state.keys()):
                 if str(k).startswith("main_cal"):
                     del st.session_state[k]
@@ -442,8 +490,23 @@ if menu == "ホーム・記録":
             gt = st.radio("種別", ["スロット", "パチンコ"], horizontal=True, index=gt_idx)
             
             r_idx = 0
+            # Automatically find the last rate for the selected hall
             if e_row is not None and e_row['rate'] in [5.06, 5.5, 27.0, 27.5]:
                 r_idx = [5.06, 5.5, 27.0, 27.5].index(e_row['rate'])
+            else:
+                # Search for the last rate used at this specific hall
+                hall_history = df[df['hall'] == hall]
+                if not hall_history.empty:
+                    last_hall_rate = hall_history.iloc[-1]['rate']
+                    if last_hall_rate in [5.06, 5.5, 27.0, 27.5]:
+                        r_idx = [5.06, 5.5, 27.0, 27.5].index(last_hall_rate)
+                else:
+                    # Fallback to the globally last used rate if no history for this hall
+                    drafts = load_drafts()
+                    l_r = drafts.get(f_p, {}).get("last_rate")
+                    if l_r in [5.06, 5.5, 27.0, 27.5]:
+                        r_idx = [5.06, 5.5, 27.0, 27.5].index(l_r)
+
             rate = st.radio("交換率", [5.06, 5.5, 27.0, 27.5], horizontal=True, index=r_idx)
             
             invest = st.number_input("投資 (¥)", min_value=0, step=500, value=int(e_row['invest']) if e_row is not None else 0)
@@ -728,6 +791,21 @@ elif menu == "貯玉・貯メダル管理":
                         df_s = df_s[df_s['id'] != row['id']]
                         save_savings(df_s)
                         st.rerun()
+                        
+                # --- YEN Value Calculation ---
+                hall_hist = df[df['hall'] == row['hall']]
+                latest_rate = 5.5 # Default fallback
+                rate_note = "(デフォルト)"
+                if not hall_hist.empty:
+                    latest_rate = hall_hist.iloc[-1]['rate']
+                    rate_note = f"(交換率: {latest_rate})"
+                    
+                yen_val = 0
+                if latest_rate > 0:
+                    yen_val = (row['saved_medals'] + row['saved_balls']) * (100 / latest_rate)
+                    
+                st.markdown(f"<div style='text-align: right; font-size: 0.9em; color: #00f2ff; margin-top: -10px;'>💰 約 <b>¥{int(yen_val):,}</b> 相当 <span style='font-size: 0.75em; color: #888;'>{rate_note}</span></div>", unsafe_allow_html=True)
+                
                 st.markdown("<hr style='margin: 10px 0; border: 0.5px solid rgba(0,242,255,0.1);'>", unsafe_allow_html=True)
 
 elif menu == "一括インポート":
