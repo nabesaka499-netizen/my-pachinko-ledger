@@ -36,6 +36,7 @@ GITHUB_USER = "nabesaka499-netizen"
 GITHUB_REPO = "my-pachinko-ledger"
 DATA_FILE = "records.csv"
 DRAFT_FILE = "drafts.json"
+SAVINGS_FILE = "savings.csv"
 
 # --- Initialization ---
 if "active_p" not in st.session_state:
@@ -114,6 +115,61 @@ def save_data(df):
     else:
         df.to_csv(DATA_FILE, index=False)
 
+def load_savings():
+    if "savings" not in st.session_state:
+        token = get_github_auth()
+        if token:
+            try:
+                url = f"https://api.github.com/repos/{GITHUB_USER}/{GITHUB_REPO}/contents/{SAVINGS_FILE}"
+                headers = {"Authorization": f"token {token}"}
+                r = requests.get(url, headers=headers)
+                if r.status_code == 200:
+                    content_json = r.json()
+                    content = base64.b64decode(content_json["content"]).decode("utf-8")
+                    df = pd.read_csv(StringIO(content))
+                    st.session_state.github_sha_savings = content_json["sha"]
+                else:
+                    df = pd.DataFrame()
+            except Exception:
+                df = pd.DataFrame()
+        else:
+            try:
+                df = pd.read_csv(SAVINGS_FILE)
+            except Exception:
+                df = pd.DataFrame()
+
+        expected_cols = ["id", "player", "hall", "saved_medals", "saved_balls", "updated_at"]
+        for col in expected_cols:
+            if col not in df.columns:
+                df[col] = 0 if col in ["saved_medals", "saved_balls"] else ""
+        
+        st.session_state.savings = df
+    return st.session_state.savings
+
+def save_savings(df):
+    st.session_state.savings = df
+    token = get_github_auth()
+    if token:
+        try:
+            url = f"https://api.github.com/repos/{GITHUB_USER}/{GITHUB_REPO}/contents/{SAVINGS_FILE}"
+            headers = {"Authorization": f"token {token}"}
+            r_get = requests.get(url, headers=headers)
+            sha = r_get.json()["sha"] if r_get.status_code == 200 else None
+            csv_content = df.to_csv(index=False)
+            data = {
+                "message": f"Update savings @ {datetime.now(JST).strftime('%Y-%m-%d %H:%M')}",
+                "content": base64.b64encode(csv_content.encode("utf-8")).decode("utf-8")
+            }
+            if sha:
+                data["sha"] = sha
+            res = requests.put(url, json=data, headers=headers)
+            if res.status_code in [200, 201]:
+                st.session_state.github_sha_savings = res.json()["content"]["sha"]
+        except Exception as e:
+            st.error(f"Save Error: {e}")
+    else:
+        df.to_csv(SAVINGS_FILE, index=False)
+
 def load_drafts():
     if "drafts" not in st.session_state:
         try:
@@ -155,17 +211,18 @@ def get_last_hall_savings(df, player, hall_name):
 
 # --- Main Logic ---
 df = load_data()
+df_s = load_savings()
 load_drafts()
 
 # Sidebar (Title and Navigation)
 st.sidebar.title("💹 収支管理簿")
-menu = st.sidebar.radio("メニュー", ["ホーム・記録", "分析 (月別/年別)", "一括インポート", "設定"], label_visibility="collapsed")
+menu = st.sidebar.radio("メニュー", ["ホーム・記録", "分析 (月別/年別)", "貯玉・貯メダル管理", "一括インポート", "設定"], label_visibility="collapsed")
 
 # Navigation Reset
 if "p_menu" not in st.session_state:
     st.session_state.p_menu = menu
 if st.session_state.p_menu != menu:
-    if menu == "ホーム・記録":
+    if menu == "ホーム・記録" or menu == "貯玉・貯メダル管理":
         st.session_state.selected_cal_date = None
         st.session_state.editing_id = None
         for k in list(st.session_state.keys()):
@@ -568,6 +625,83 @@ elif menu == "分析 (月別/年別)":
             show_analysis("Player 2")
         with tab_all:
             show_analysis("全員")
+
+elif menu == "貯玉・貯メダル管理":
+    st.subheader("貯玉・貯メダル管理")
+    
+    # Select player
+    p_idx = 0 if st.session_state.active_p == "Player 1" else 1
+    p_sel = st.radio("表示プレイヤー", ["Player 1", "Player 2"], horizontal=True, index=p_idx, key="p_savings")
+    st.session_state.active_p = p_sel
+
+    # Edit / Add Form
+    st.markdown("#### 新規・更新登録")
+    with st.form("savings_form", clear_on_submit=True):
+        # Allow selection from existing halls in records for convenience
+        h_list = sorted(list(set(df['hall'].dropna().unique().tolist() + df_s['hall'].dropna().unique().tolist())))
+        hall_sel = st.selectbox("ホール名", ["新規入力..."] + h_list)
+        hall_new = st.text_input("ホール名を入力 (上の「新規入力...」を選択時)")
+        
+        col_s1, col_s2 = st.columns(2)
+        with col_s1:
+            medals = st.number_input("貯メダル (枚)", min_value=0, value=0, step=50)
+        with col_s2:
+            balls = st.number_input("貯玉 (玉)", min_value=0, value=0, step=125)
+            
+        submitted = st.form_submit_button("保存・更新", type="primary", use_container_width=True)
+        if submitted:
+            target_hall = hall_new if hall_sel == "新規入力..." else hall_sel
+            if not target_hall:
+                st.error("ホール名を入力してください。")
+            else:
+                # Update existing or add new
+                updated = False
+                for idx, row in df_s.iterrows():
+                    if row['player'] == p_sel and row['hall'] == target_hall:
+                        df_s.at[idx, 'saved_medals'] = medals
+                        df_s.at[idx, 'saved_balls'] = balls
+                        df_s.at[idx, 'updated_at'] = datetime.now(JST).strftime('%Y-%m-%d %H:%M')
+                        updated = True
+                        break
+                
+                if not updated:
+                    new_r = {
+                        "id": str(int(datetime.now().timestamp())),
+                        "player": p_sel,
+                        "hall": target_hall,
+                        "saved_medals": medals,
+                        "saved_balls": balls,
+                        "updated_at": datetime.now(JST).strftime('%Y-%m-%d %H:%M')
+                    }
+                    df_s = pd.concat([df_s, pd.DataFrame([new_r])], ignore_index=True)
+                    
+                save_savings(df_s)
+                st.success(f"{target_hall} のデータを更新しました！")
+                st.rerun()
+
+    st.divider()
+    
+    st.markdown("#### 登録済みデータ一覧")
+    p_df_s = df_s[df_s['player'] == p_sel].copy()
+    if p_df_s.empty:
+        st.info("データがありません。")
+    else:
+        # Display as a dataframe or cards
+        p_df_s = p_df_s.sort_values('updated_at', ascending=False)
+        for _, row in p_df_s.iterrows():
+            with st.container():
+                rc1, rc2, rc3 = st.columns([4, 2, 1])
+                with rc1:
+                    st.markdown(f"**{row['hall']}**")
+                    st.caption(f"最終更新: {row['updated_at']}")
+                with rc2:
+                    st.markdown(f"🎰 {int(row['saved_medals']):,} 枚<br>🎱 {int(row['saved_balls']):,} 玉", unsafe_allow_html=True)
+                with rc3:
+                    if st.button("削除", key=f"del_s_{row['id']}"):
+                        df_s = df_s[df_s['id'] != row['id']]
+                        save_savings(df_s)
+                        st.rerun()
+                st.markdown("<hr style='margin: 10px 0; border: 0.5px solid rgba(0,242,255,0.1);'>", unsafe_allow_html=True)
 
 elif menu == "一括インポート":
     st.subheader("一括インポート")
