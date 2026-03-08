@@ -496,6 +496,33 @@ if menu == "ホーム・記録":
             df = pd.concat([df, pd.DataFrame([n_row])], ignore_index=True)
             save_data(df)
             
+            # --- Auto-sync Savings ---
+            # Automatically push the end_savings to the savings.csv data
+            updated = False
+            for idx, row in df_s.iterrows():
+                if row['player'] == f_p and row['hall'] == hall:
+                    if gt == "スロット":
+                        df_s.at[idx, 'saved_medals'] = s_e
+                    else: # パチンコ
+                        df_s.at[idx, 'saved_balls'] = s_e
+                    df_s.at[idx, 'updated_at'] = datetime.now(JST).strftime('%Y-%m-%d %H:%M')
+                    updated = True
+                    break
+            
+            if not updated and s_e > 0:
+                # If no existing record but we have end savings, create a new row
+                new_s_row = {
+                    "id": str(int(datetime.now().timestamp())),
+                    "player": f_p,
+                    "hall": hall,
+                    "saved_medals": s_e if gt == "スロット" else 0,
+                    "saved_balls": s_e if gt == "パチンコ" else 0,
+                    "updated_at": datetime.now(JST).strftime('%Y-%m-%d %H:%M')
+                }
+                df_s = pd.concat([df_s, pd.DataFrame([new_s_row])], ignore_index=True)
+                
+            save_savings(df_s)
+            
             # Save defaults
             drafts = load_drafts()
             drafts[f_p].update({"last_hall": hall, "last_machine": mach, "last_rate": rate})
