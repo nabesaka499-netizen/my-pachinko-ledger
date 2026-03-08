@@ -404,7 +404,7 @@ if menu == "ホーム・記録":
                 
         # --- PREVIEW VIEW (Day detail & Add new) ---
         p_date = st.session_state.get("preview_date")
-        if p_date:
+        if p_date and not st.session_state.get("selected_cal_date"):
             st.markdown(f"### 🔍 {p_date.replace('-', '/')} の記録詳細")
             day_records = df[df['date'] == p_date]
             
@@ -434,17 +434,22 @@ if menu == "ホーム・記録":
                             st.rerun()
 
             st.write("")
-            if st.button("➕ この日に新規記録を追加", use_container_width=True, type="primary"):
-                st.session_state.selected_cal_date = p_date
-                st.session_state.editing_id = None
-                st.session_state.preview_date = None
-                st.rerun()
-            
-            if st.button("✖ 閉じる", use_container_width=True):
-                st.session_state.preview_date = None
-                st.rerun()
+            col_a1, col_a2 = st.columns([4, 1])
+            with col_a1:
+                if st.button("➕ この日に新規記録を追加", use_container_width=True, type="primary"):
+                    st.session_state.selected_cal_date = p_date
+                    st.session_state.editing_id = None
+                    st.session_state.preview_date = None
+                    st.rerun()
+            with col_a2:
+                if st.button("✖ 閉じる", use_container_width=True):
+                    st.session_state.preview_date = None
+                    st.rerun()
 
             st.markdown("---")
+            
+        # The calendar view logic starts here. It's now separate from the preview rendering.
+        # But wait, we want to clear the calendar if preview is open? No, keep it but below.
             
     else:
         # --- FORM VIEW ---
@@ -778,6 +783,7 @@ elif menu == "貯玉・貯メダル管理":
     else:
         # Display as a dataframe or cards
         p_df_s = p_df_s.sort_values('updated_at', ascending=False)
+        total_yen_val = 0
         for _, row in p_df_s.iterrows():
             with st.container():
                 rc1, rc2, rc3 = st.columns([4, 2, 1])
@@ -804,9 +810,14 @@ elif menu == "貯玉・貯メダル管理":
                 if latest_rate > 0:
                     yen_val = (row['saved_medals'] + row['saved_balls']) * (100 / latest_rate)
                     
+                total_yen_val += yen_val
+                    
                 st.markdown(f"<div style='text-align: right; font-size: 0.9em; color: #00f2ff; margin-top: -10px;'>💰 約 <b>¥{int(yen_val):,}</b> 相当 <span style='font-size: 0.75em; color: #888;'>{rate_note}</span></div>", unsafe_allow_html=True)
                 
                 st.markdown("<hr style='margin: 10px 0; border: 0.5px solid rgba(0,242,255,0.1);'>", unsafe_allow_html=True)
+                
+        # Total line
+        st.markdown(f"<div style='text-align: right; font-size: 1.2em; color: #fff; margin-top: 10px; padding: 10px; background: rgba(0, 242, 255, 0.1); border-radius: 5px; border-left: 5px solid #00f2ff;'><b>総資産額（円換算合計）: <span style='color:#00f2ff;'>約 ¥{int(total_yen_val):,}</span> 相当</b></div>", unsafe_allow_html=True)
 
 elif menu == "一括インポート":
     st.subheader("一括インポート")
