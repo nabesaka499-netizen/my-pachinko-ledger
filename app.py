@@ -282,6 +282,52 @@ if menu == "ホーム・記録":
                         del st.session_state[k]
                 st.rerun()
 
+        # --- PREVIEW VIEW (Day detail & Add new) ---
+        p_date = st.session_state.get("preview_date")
+        if p_date and not st.session_state.get("selected_cal_date"):
+            st.markdown(f"### 🔍 {p_date.replace('-', '/')} の記録詳細")
+            day_records = df[df['date'] == p_date]
+            
+            if day_records.empty:
+                st.info("この日の記録はありません。")
+            else:
+                for idx, row in day_records.iterrows():
+                    with st.container(border=True):
+                        c0, c1, c2, c3, c4 = st.columns([2, 2, 2, 2, 2])
+                        c0.markdown(f"**{row['player']}**")
+                        c1.markdown(f"**店舗:** {row['hall']}")
+                        c2.markdown(f"**時間:** {row.get('start_time', '--')} - {row.get('end_time', '--')}")
+                        c3.markdown(f"**収支:** ¥{int(row['balance']):,}")
+                        
+                        btn_col1, btn_col2 = c4.columns(2)
+                        if btn_col1.button("✏️ 編集", key=f"edit_{row['id']}", use_container_width=True):
+                            st.session_state.editing_id = row['id']
+                            st.session_state.selected_cal_date = p_date
+                            st.session_state.preview_date = None
+                            st.rerun()
+                            
+                        # Delete functionality from preview
+                        if btn_col2.button("🗑️", key=f"del_{row['id']}", type="primary", use_container_width=True):
+                            df = df[df['id'] != row['id']]
+                            save_data(df)
+                            st.success("削除しました。")
+                            st.rerun()
+
+            st.write("")
+            col_a1, col_a2 = st.columns([4, 1])
+            with col_a1:
+                if st.button("➕ この日に新規記録を追加", use_container_width=True, type="primary"):
+                    st.session_state.selected_cal_date = p_date
+                    st.session_state.editing_id = None
+                    st.session_state.preview_date = None
+                    st.rerun()
+            with col_a2:
+                if st.button("✖ 閉じる", use_container_width=True):
+                    st.session_state.preview_date = None
+                    st.rerun()
+
+            st.markdown("---")
+
         if not CALENDAR_AVAILABLE:
             st.info("カレンダー機能を準備中です。")
             def on_d_chg():
@@ -402,54 +448,7 @@ if menu == "ホーム・記録":
 
                 # Removed internal month navigation processing since it's now handled entirely by Streamlit buttons
                 
-        # --- PREVIEW VIEW (Day detail & Add new) ---
-        p_date = st.session_state.get("preview_date")
-        if p_date and not st.session_state.get("selected_cal_date"):
-            st.markdown(f"### 🔍 {p_date.replace('-', '/')} の記録詳細")
-            day_records = df[df['date'] == p_date]
-            
-            if day_records.empty:
-                st.info("この日の記録はありません。")
-            else:
-                for idx, row in day_records.iterrows():
-                    with st.container(border=True):
-                        c0, c1, c2, c3, c4 = st.columns([2, 2, 2, 2, 2])
-                        c0.markdown(f"**{row['player']}**")
-                        c1.markdown(f"**店舗:** {row['hall']}")
-                        c2.markdown(f"**時間:** {row.get('start_time', '--')} - {row.get('end_time', '--')}")
-                        c3.markdown(f"**収支:** ¥{int(row['balance']):,}")
-                        
-                        btn_col1, btn_col2 = c4.columns(2)
-                        if btn_col1.button("✏️ 編集", key=f"edit_{row['id']}", use_container_width=True):
-                            st.session_state.editing_id = row['id']
-                            st.session_state.selected_cal_date = p_date
-                            st.session_state.preview_date = None
-                            st.rerun()
-                            
-                        # Delete functionality from preview
-                        if btn_col2.button("🗑️", key=f"del_{row['id']}", type="primary", use_container_width=True):
-                            df = df[df['id'] != row['id']]
-                            save_data(df)
-                            st.success("削除しました。")
-                            st.rerun()
-
-            st.write("")
-            col_a1, col_a2 = st.columns([4, 1])
-            with col_a1:
-                if st.button("➕ この日に新規記録を追加", use_container_width=True, type="primary"):
-                    st.session_state.selected_cal_date = p_date
-                    st.session_state.editing_id = None
-                    st.session_state.preview_date = None
-                    st.rerun()
-            with col_a2:
-                if st.button("✖ 閉じる", use_container_width=True):
-                    st.session_state.preview_date = None
-                    st.rerun()
-
-            st.markdown("---")
-            
-        # The calendar view logic starts here. It's now separate from the preview rendering.
-        # But wait, we want to clear the calendar if preview is open? No, keep it but below.
+        # The calendar view logic ends here
             
     else:
         # --- FORM VIEW ---
