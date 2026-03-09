@@ -52,7 +52,10 @@ if "nav_lock" not in st.session_state:
 
 # --- Helper Functions ---
 def get_github_auth():
-    return st.secrets.get("GITHUB_TOKEN")
+    try:
+        return st.secrets.get("GITHUB_TOKEN")
+    except Exception:
+        return None
 
 def load_data():
     if "records" not in st.session_state:
