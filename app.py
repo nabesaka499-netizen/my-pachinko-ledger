@@ -5,7 +5,6 @@ import json
 import requests
 import base64
 from io import StringIO
-
 try:
     import holidays
     from streamlit_calendar import calendar
@@ -81,16 +80,33 @@ def load_data():
                 df = pd.DataFrame()
 
         # Schema Fix
-        expected_cols = ["id", "player", "game_type", "date", "hall", "machine", "hours", "start_time", "end_time", "invest", "start_savings", "end_savings", "cash_out_yen", "rate", "balance", "memo"]
+        expected_cols = [
+            "id", "player", "game_type", "date", "hall", "machine",
+            "hours", "invest", "recovery", "balance", "memo",
+            "start_savings", "end_savings", "rate", "cash_out_yen",
+            "start_time", "end_time"
+        ]
         for col in expected_cols:
             if col not in df.columns:
-                df[col] = 0 if col in ["invest", "start_savings", "end_savings", "cash_out_yen", "balance", "hours", "rate"] else ""
-        
+                df[col] = 0 if col in ["invest", "recovery", "balance", "start_savings", "end_savings",
+                                        "cash_out_yen", "hours", "rate"] else ""
+
         if not df.empty:
+            df['player'] = df['player'].astype(str).str.strip()
             df['date'] = pd.to_datetime(df['date'], errors='coerce').dt.strftime('%Y-%m-%d')
             df = df.dropna(subset=['date'])
-            num_cols = ["invest", "start_savings", "end_savings", "cash_out_yen", "balance", "hours", "rate"]
-            df[num_cols] = df[num_cols].fillna(0)
+            # 数値列の修正
+            num_cols = ["invest", "recovery", "balance", "start_savings", "end_savings", "rate", "cash_out_yen", "hours"]
+            for col in num_cols:
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+            
+            # 文字列型の列のNaN対策
+            str_cols = ["player", "game_type", "hall", "machine", "memo", "start_time", "end_time"]
+            for col in str_cols:
+                if col in df.columns:
+                    df[col] = df[col].fillna("")
+
         st.session_state.records = df
     return st.session_state.records
 
@@ -145,7 +161,7 @@ def load_savings():
         for col in expected_cols:
             if col not in df.columns:
                 df[col] = 0 if col in ["saved_medals", "saved_balls"] else ""
-        
+
         st.session_state.savings = df
     return st.session_state.savings
 
@@ -180,8 +196,10 @@ def load_drafts():
                 st.session_state.drafts = json.load(f)
         except Exception:
             st.session_state.drafts = {
-                "Player 1": {"start_hour": 9, "start_min": 0, "last_hall": None, "last_machine": None, "last_rate": None},
-                "Player 2": {"start_hour": 9, "start_min": 0, "last_hall": None, "last_machine": None, "last_rate": None}
+                "Player 1": {"start_hour": 9, "start_min": 0, "last_hall": None,
+                              "last_machine": None, "last_rate": None},
+                "Player 2": {"start_hour": 9, "start_min": 0, "last_hall": None,
+                              "last_machine": None, "last_rate": None}
             }
     return st.session_state.drafts
 
@@ -217,15 +235,21 @@ df = load_data()
 df_s = load_savings()
 load_drafts()
 
-# Sidebar (Title and Navigation)
+# ============================================================
+# Sidebar
+# ============================================================
 st.sidebar.title("💹 収支管理簿")
-menu = st.sidebar.radio("メニュー", ["ホーム・記録", "分析 (月別/年別)", "貯玉・貯メダル管理", "一括インポート", "設定"], label_visibility="collapsed")
+menu = st.sidebar.radio(
+    "メニュー",
+    ["ホーム・記録", "分析 (月別/年別)", "貯玉・貯メダル管理", "一括インポート", "設定"],
+    label_visibility="collapsed"
+)
 
 # Navigation Reset
 if "p_menu" not in st.session_state:
     st.session_state.p_menu = menu
 if st.session_state.p_menu != menu:
-    if menu == "ホーム・記録" or menu == "貯玉・貯メダル管理":
+    if menu in ["ホーム・記録", "貯玉・貯メダル管理"]:
         st.session_state.selected_cal_date = None
         st.session_state.editing_id = None
         for k in list(st.session_state.keys()):
@@ -233,233 +257,20 @@ if st.session_state.p_menu != menu:
                 del st.session_state[k]
     st.session_state.p_menu = menu
 
+# ============================================================
+# ホーム・記録
+# ============================================================
 if menu == "ホーム・記録":
     curr_date_str = st.session_state.get("selected_cal_date")
-    
-    # Strictly hide form if no date selected
-    if curr_date_str is None or str(curr_date_str).lower() == "none" or curr_date_str == "":
-        # --- CALENDAR VIEW ---
-        c_h1, c_h2 = st.columns([1, 1])
-        with c_h1:
-            # Synced Player Selection
-            p_idx = 0 if st.session_state.active_p == "Player 1" else 1
-            st.write("### プレイヤー選択")
-            p_sel = st.radio("表示プレイヤー", ["Player 1", "Player 2"], horizontal=True, index=p_idx, key="p_main")
-            st.session_state.active_p = p_sel # Update state
-        
-        # Monthly Summary for Selected Player (Synced with Calendar View)
-        v_m = st.session_state.view_month
-        v_dt = pd.to_datetime(v_m + "-01")
-        
-        df_m = df.copy()
-        df_m['month'] = pd.to_datetime(df['date']).dt.strftime('%Y-%m')
-        p_data = df_m[(df_m['month'] == v_m) & (df_m['player'] == st.session_state.active_p)]
-        p_bal = p_data['balance'].sum()
-        p_hours = p_data['hours'].sum()
-        p_hourly = p_bal / p_hours if p_hours > 0 else 0
-        
-        with c_h2:
-            # Using 3 columns for metrics to keep it clean
-            m1, m2, m3 = st.columns(3)
-            m1.metric(f"{v_dt.strftime('%m月')}収支", f"¥{int(p_bal):,}")
-            m2.metric("稼働時間", f"{p_hours:.1f}h")
-            m3.metric("平均時給", f"¥{int(p_hourly):,}")
-        st.divider()
+    p_date = st.session_state.get("preview_date")
 
-        # --- Custom Month Navigation ---
-        nav_c1, nav_c2, nav_c3 = st.columns([1, 6, 1])
-        with nav_c1:
-            if st.button("◀ 前月", use_container_width=True):
-                st.session_state.view_month = (v_dt - pd.DateOffset(months=1)).strftime("%Y-%m")
-                for k in list(st.session_state.keys()):
-                    if str(k).startswith("main_cal"):
-                        del st.session_state[k]
-                st.rerun()
-        with nav_c2:
-            st.markdown(f"<h3 style='text-align: center; color: #00f2ff; margin-top: 0;'>{v_dt.strftime('%Y年%m月')}</h3>", unsafe_allow_html=True)
-        with nav_c3:
-            if st.button("次月 ▶", use_container_width=True):
-                st.session_state.view_month = (v_dt + pd.DateOffset(months=1)).strftime("%Y-%m")
-                for k in list(st.session_state.keys()):
-                    if str(k).startswith("main_cal"):
-                        del st.session_state[k]
-                st.rerun()
-
-        # --- PREVIEW VIEW (Day detail & Add new) ---
-        p_date = st.session_state.get("preview_date")
-        if p_date and not st.session_state.get("selected_cal_date"):
-            st.markdown(f"### 🔍 {p_date.replace('-', '/')} の記録詳細")
-            day_records = df[df['date'] == p_date]
-            
-            if day_records.empty:
-                st.info("この日の記録はありません。")
-            else:
-                for idx, row in day_records.iterrows():
-                    with st.container(border=True):
-                        c0, c1, c2, c3, c4 = st.columns([2, 2, 2, 2, 2])
-                        c0.markdown(f"**{row['player']}**")
-                        c1.markdown(f"**店舗:** {row['hall']}")
-                        c2.markdown(f"**時間:** {row.get('start_time', '--')} - {row.get('end_time', '--')}")
-                        c3.markdown(f"**収支:** ¥{int(row['balance']):,}")
-                        
-                        btn_col1, btn_col2 = c4.columns(2)
-                        if btn_col1.button("✏️ 編集", key=f"edit_{row['id']}", use_container_width=True):
-                            st.session_state.editing_id = row['id']
-                            st.session_state.selected_cal_date = p_date
-                            st.session_state.preview_date = None
-                            st.rerun()
-                            
-                        # Delete functionality from preview
-                        if btn_col2.button("🗑️", key=f"del_{row['id']}", type="primary", use_container_width=True):
-                            df = df[df['id'] != row['id']]
-                            save_data(df)
-                            st.success("削除しました。")
-                            st.rerun()
-
-            st.write("")
-            col_a1, col_a2 = st.columns([4, 1])
-            with col_a1:
-                if st.button("➕ この日に新規記録を追加", use_container_width=True, type="primary"):
-                    st.session_state.selected_cal_date = p_date
-                    st.session_state.editing_id = None
-                    st.session_state.preview_date = None
-                    st.rerun()
-            with col_a2:
-                if st.button("✖ 閉じる", use_container_width=True):
-                    st.session_state.preview_date = None
-                    st.rerun()
-
-            st.markdown("---")
-
-        if not CALENDAR_AVAILABLE:
-            st.info("カレンダー機能を準備中です。")
-            def on_d_chg():
-                st.session_state.selected_cal_date = st.session_state.tmp_d.strftime("%Y-%m-%d")
-            st.date_input("日付を選択して記録", datetime.now(JST), key="tmp_d", on_change=on_d_chg)
-        else:
-            events = []
-            if not df.empty:
-                cal_df = df[df['player'] == st.session_state.active_p].copy()
-                d_bal = cal_df.groupby('date')['balance'].sum().reset_index()
-                for _, r in d_bal.iterrows():
-                    b = int(r['balance'])
-                    color = "#ffffff" if b >= 0 else "#ff4b4b"
-                    events.append({
-                        "id": f"s_{r['date']}",
-                        "title": f"{'+' if b>=0 else ''}{b:,}円",
-                        "start": r['date'],
-                        "backgroundColor": "transparent",
-                        "borderColor": "transparent",
-                        "textColor": color,
-                        "extendedProps": {"type": "summary", "date": r['date']}
-                    })
-                # Dynamic starting day of week
-                first_day = (v_dt.dayofweek + 1) % 7
-                
-                # Base custom CSS (including weekend colors and mobile text fitting for numbers)
-                custom_css = """
-                .fc-daygrid-day-number, .fc-toolbar-title { color: #00f2ff !important; }
-                .fc-daygrid-day { cursor: pointer; }
-                .fc-col-header-cell-cushion { cursor: default; }
-                .fc-day-sat .fc-col-header-cell-cushion, .fc-day-sat .fc-daygrid-day-number { color: #4b8bff !important; }
-                .fc-day-sun .fc-col-header-cell-cushion, .fc-day-sun .fc-daygrid-day-number { color: #ff4b4b !important; }
-                /* Ensure 5-digit numbers fit on mobile */
-                .fc-event { border: none !important; background: transparent !important; }
-                .fc-event-main { padding: 0 !important; text-align: center; }
-                .fc-event-title { 
-                    white-space: pre-wrap !important; 
-                    word-wrap: break-word !important; 
-                    font-size: clamp(0.6rem, 2.5vw, 0.9rem) !important;
-                    line-height: 1.1 !important;
-                    letter-spacing: -0.5px !important;
-                }
-                """
-                
-                # Holidays
-                try:
-                    for d, n in holidays.Japan(years=range(2024, 2027)).items():
-                        date_str = d.strftime("%Y-%m-%d")
-                        events.append({
-                            "title": n,
-                            "start": date_str,
-                            "display": "background",
-                            "backgroundColor": "#ff4b4b1a"
-                        })
-                        custom_css += f'.fc-day[data-date="{date_str}"] .fc-daygrid-day-number {{ color: #ff4b4b !important; }}\n'
-                except Exception:
-                    pass
-
-            cal_opts = {
-                "headerToolbar": False,
-                "initialDate": f"{st.session_state.view_month}-01",
-                "firstDay": int(first_day),
-                "locale": "ja",
-                "height": 700,
-                "selectable": True,
-                "editable": False,
-                "navLinks": False,
-                "selectMirror": True,
-            }
-            cal_res = calendar(
-                events=events,
-                options=cal_opts,
-                custom_css=custom_css,
-                callbacks=['dateClick', 'eventClick', 'select'],
-                key=f"main_cal_{st.session_state.view_month}"
-            )
-            
-            # Click Handling
-            res = cal_res
-            if res and "callback" in res:
-                cb = res.get("callback")
-                t_d = None
-                
-                # 1. Capture date selection primary triggers with robust key checking
-                if cb == "dateClick":
-                    cd = res.get("dateClick", {})
-                    t_d = cd.get("dateStr") or cd.get("date") or cd.get("start") or cd.get("startStr")
-                elif cb == "select":
-                    cs = res.get("select", {})
-                    t_d = cs.get("startStr") or cs.get("start") or cs.get("date") or cs.get("dateStr")
-                elif cb == "navLinkDayClick":
-                    cn = res.get("navLinkDayClick", {})
-                    t_d = cn.get("dateStr") or cn.get("date")
-                elif cb == "eventClick":
-                    props = res.get("eventClick", {}).get("event", {}).get("extendedProps", {})
-                    if props.get("type") == "summary":
-                        t_d = props.get("date")
-                        day_q = cal_df[cal_df['date'] == t_d]
-                        if not day_q.empty:
-                            st.session_state.editing_id = day_q.iloc[0]['id']
-                
-                # 2. Priority 1: If a date was selected, GO to preview view instead of form
-                if t_d:
-                    try:
-                        # Reliably convert UTC ISO strings to JST to prevent 1-day offsets
-                        dt = pd.to_datetime(t_d)
-                        if dt.tzinfo is not None:
-                            dt = dt.tz_convert('Asia/Tokyo')
-                        clean_date = dt.strftime("%Y-%m-%d")
-                    except Exception:
-                        clean_date = str(t_d).split("T")[0]
-                        
-                    # Show preview instead of direct form
-                    st.session_state.preview_date = clean_date
-                    st.session_state.selected_cal_date = None
-                    st.session_state.editing_id = None
-                    st.rerun()
-
-                # Removed internal month navigation processing since it's now handled entirely by Streamlit buttons
-                
-        # The calendar view logic ends here
-            
-    else:
-        # --- FORM VIEW ---
-
+    # 1. フォーム表示モード (新規追加 / 編集)
+    if curr_date_str and str(curr_date_str).lower() != "none":
         st.markdown(f"### 📅 {curr_date_str.replace('-', '/')} の記録")
         st.divider()
+
         e_id = st.session_state.get("editing_id")
-        
+
         ctx_c1, ctx_c2 = st.columns([5, 1])
         ctx_c1.subheader("修正" if e_id else "新規記録")
         if ctx_c2.button("🔙 戻る", use_container_width=True):
@@ -471,57 +282,64 @@ if menu == "ホーム・記録":
                     del st.session_state[k]
             st.rerun()
 
-        e_row = df[df['id'] == e_id].iloc[0] if e_id and not df[df['id'] == e_id].empty else None
-        
+        e_row = None
+        if e_id:
+            matched = df[
+                (df['id'] == e_id) &
+                (df['player'].astype(str).str.strip() == st.session_state.active_p)
+            ]
+            if not matched.empty:
+                e_row = matched.iloc[0]
+
+        f_p = st.session_state.active_p
+
         col1, col2 = st.columns(2)
         with col1:
-            # Sync player state from home screen
-            f_p = st.session_state.active_p
-            
             h_list = sorted(df['hall'].dropna().unique().tolist())
             last_h, last_m = get_last_player_defaults(df, f_p)
-            h_idx = (h_list.index(last_h)+1) if last_h in h_list else 0
+            h_idx = (h_list.index(last_h) + 1) if last_h in h_list else 0
             hall = st.selectbox("ホール名", ["新規入力..."] + h_list, index=h_idx)
             if hall == "新規入力...":
-                hall = st.text_input("ホール名を入力", value=(e_row['hall'] if e_row is not None else ""))
-            
+                hall = st.text_input("ホール名を入力",
+                                     value=(e_row['hall'] if e_row is not None else ""))
+
             m_list = sorted(df['machine'].dropna().unique().tolist())
-            m_idx = (m_list.index(last_m)+1) if last_m in m_list else 0
+            m_idx = (m_list.index(last_m) + 1) if last_m in m_list else 0
             mach = st.selectbox("機種名", ["新規入力..."] + m_list, index=m_idx)
             if mach == "新規入力...":
-                mach = st.text_input("機種名を入力", value=(e_row['machine'] if e_row is not None else ""))
+                mach = st.text_input("機種名を入力",
+                                     value=(e_row['machine'] if e_row is not None else ""))
+
             memo = st.text_area("メモ", value=(e_row['memo'] if e_row is not None else ""))
 
         with col2:
             gt_idx = 0 if e_row is None or e_row['game_type'] == "スロット" else 1
             gt = st.radio("種別", ["スロット", "パチンコ"], horizontal=True, index=gt_idx)
-            
+
             r_idx = 0
-            # Automatically find the last rate for the selected hall
             if e_row is not None and e_row['rate'] in [5.06, 5.5, 27.0, 27.5]:
                 r_idx = [5.06, 5.5, 27.0, 27.5].index(e_row['rate'])
             else:
-                # Search for the last rate used at this specific hall
                 hall_history = df[df['hall'] == hall]
                 if not hall_history.empty:
                     last_hall_rate = hall_history.iloc[-1]['rate']
                     if last_hall_rate in [5.06, 5.5, 27.0, 27.5]:
                         r_idx = [5.06, 5.5, 27.0, 27.5].index(last_hall_rate)
                 else:
-                    # Fallback to the globally last used rate if no history for this hall
                     drafts = load_drafts()
                     l_r = drafts.get(f_p, {}).get("last_rate")
                     if l_r in [5.06, 5.5, 27.0, 27.5]:
                         r_idx = [5.06, 5.5, 27.0, 27.5].index(l_r)
-
             rate = st.radio("交換率", [5.06, 5.5, 27.0, 27.5], horizontal=True, index=r_idx)
-            
-            invest = st.number_input("投資 (¥)", min_value=0, step=500, value=int(e_row['invest']) if e_row is not None else 0)
+
+            invest = st.number_input("投資 (¥)", min_value=0, step=500,
+                                     value=int(e_row['invest']) if e_row is not None else 0)
             l_sav = get_last_hall_savings(df, f_p, hall)
-            s_s = st.number_input("開始貯メダル/玉", min_value=0, value=int(e_row['start_savings'] if e_row is not None else l_sav))
-            s_e = st.number_input("終了貯メダル/玉", min_value=0, value=int(e_row['end_savings'] if e_row is not None else 0))
-            
-            # --- Start and End Time Inputs ---
+            s_s = st.number_input("開始貯メダル/玉", min_value=0,
+                                  value=int(e_row['start_savings'] if e_row is not None else l_sav))
+            s_e = st.number_input("終了貯メダル/玉", min_value=0,
+                                  value=int(e_row['end_savings'] if e_row is not None else 0))
+
             default_start = time(10, 0)
             default_end = time(12, 0)
             if e_row is not None and pd.notna(e_row.get('start_time')) and e_row['start_time']:
@@ -540,14 +358,12 @@ if menu == "ホーム・記録":
                 start_time = st.time_input("開始時間", value=default_start)
             with c_t2:
                 end_time = st.time_input("終了時間", value=default_end)
-            
-            # Dynamic hours calculation (handling cross-midnight)
+
             dummy_d = date.today()
             dt_start = datetime.combine(dummy_d, start_time)
             dt_end = datetime.combine(dummy_d, end_time)
             if dt_end < dt_start:
                 dt_end += timedelta(days=1)
-            
             delta_hr = (dt_end - dt_start).total_seconds() / 3600.0
             st.info(f"⏳ **稼働時間: {delta_hr:.1f} 時間** (保存前に確認)")
 
@@ -555,32 +371,40 @@ if menu == "ホーム・記録":
             bal = round((s_e - s_s) * (100 / rate) - invest)
             n_row = {
                 "id": e_id if e_id else str(int(datetime.now().timestamp())),
-                "player": f_p, "game_type": gt, "date": str(curr_date_str),
-                "hall": hall, "machine": mach, "hours": round(delta_hr, 1),
-                "invest": invest, "start_savings": s_s, "end_savings": s_e,
-                "rate": rate, "balance": bal, "memo": memo,
-                "start_time": start_time.strftime("%H:%M"), "end_time": end_time.strftime("%H:%M"), "cash_out_yen": 0
+                "player": f_p,
+                "game_type": gt,
+                "date": str(curr_date_str),
+                "hall": hall,
+                "machine": mach,
+                "hours": round(delta_hr, 1),
+                "invest": invest,
+                "recovery": 0,
+                "balance": bal,
+                "memo": memo,
+                "start_savings": s_s,
+                "end_savings": s_e,
+                "rate": rate,
+                "cash_out_yen": 0,
+                "start_time": start_time.strftime("%H:%M"),
+                "end_time": end_time.strftime("%H:%M")
             }
             if e_id:
                 df = df[df['id'] != e_id]
             df = pd.concat([df, pd.DataFrame([n_row])], ignore_index=True)
             save_data(df)
-            
-            # --- Auto-sync Savings ---
-            # Automatically push the end_savings to the savings.csv data
+
             updated = False
             for idx, row in df_s.iterrows():
                 if row['player'] == f_p and row['hall'] == hall:
                     if gt == "スロット":
                         df_s.at[idx, 'saved_medals'] = s_e
-                    else: # パチンコ
+                    else:
                         df_s.at[idx, 'saved_balls'] = s_e
                     df_s.at[idx, 'updated_at'] = datetime.now(JST).strftime('%Y-%m-%d %H:%M')
                     updated = True
                     break
-            
+
             if not updated and s_e > 0:
-                # If no existing record but we have end savings, create a new row
                 new_s_row = {
                     "id": str(int(datetime.now().timestamp())),
                     "player": f_p,
@@ -590,14 +414,12 @@ if menu == "ホーム・記録":
                     "updated_at": datetime.now(JST).strftime('%Y-%m-%d %H:%M')
                 }
                 df_s = pd.concat([df_s, pd.DataFrame([new_s_row])], ignore_index=True)
-                
+
             save_savings(df_s)
-            
-            # Save defaults
             drafts = load_drafts()
             drafts[f_p].update({"last_hall": hall, "last_machine": mach, "last_rate": rate})
             save_drafts()
-            
+
             st.session_state.selected_cal_date = None
             st.session_state.editing_id = None
             for k in list(st.session_state.keys()):
@@ -608,8 +430,10 @@ if menu == "ホーム・記録":
 
         if e_id:
             if st.button("🗑️ 記録を削除"):
-                df = df[df['id'] != e_id]
-                save_data(df)
+                target = df[(df['id'] == e_id) & (df['player'].astype(str).str.strip() == f_p)]
+                if not target.empty:
+                    df = df[df['id'] != e_id]
+                    save_data(df)
                 st.session_state.selected_cal_date = None
                 st.session_state.editing_id = None
                 for k in list(st.session_state.keys()):
@@ -617,99 +441,255 @@ if menu == "ホーム・記録":
                         del st.session_state[k]
                 st.rerun()
 
+    # 2. カレンダー / 詳細表示モード
+    else:
+        # --- TOP SECTION (Metrics & Navigation) ---
+        if p_date:
+            st.write(f"### 👤 {st.session_state.active_p}")
+            c_top = st.container()
+        else:
+            c_h1, c_h2 = st.columns([1, 1])
+            with c_h1:
+                p_idx = 0 if st.session_state.active_p == "Player 1" else 1
+                st.write("### プレイヤー選択")
+                p_sel = st.radio("表示プレイヤー", ["Player 1", "Player 2"],
+                                horizontal=True, index=p_idx, key="p_main")
+                if p_sel != st.session_state.active_p:
+                    st.session_state.active_p = p_sel
+                    st.session_state.preview_date = None
+                    if "records" in st.session_state:
+                        del st.session_state["records"]
+                    st.rerun()
+            c_top = c_h2 # c_h1/c_h2 を利用
+
+        # Monthly Summary calculation (always needed)
+        v_m = st.session_state.view_month
+        v_dt = pd.to_datetime(v_m + "-01")
+        df_all = load_data()
+        if not df_all.empty:
+            df_m = df_all.copy()
+            df_m['month'] = pd.to_datetime(df_m['date']).dt.strftime('%Y-%m')
+            p_data = df_m[
+                (df_m['month'] == v_m) & 
+                (df_m['player'].astype(str).str.strip() == st.session_state.active_p)
+            ]
+            p_bal = p_data['balance'].sum()
+            p_hours = p_data['hours'].sum()
+            p_hourly = p_bal / p_hours if p_hours > 0 else 0
+        else:
+            p_bal, p_hours, p_hourly = 0, 0, 0
+
+        with c_top:
+            m1, m2, m3 = st.columns(3)
+            m1.metric(f"{v_dt.strftime('%m月')}収支", f"¥{int(p_bal):,}")
+            m2.metric("稼働時間", f"{p_hours:.1f}h")
+            m3.metric("平均時給", f"¥{int(p_hourly):,}")
+
+        st.divider()
+
+        # Navigation
+        nav_c1, nav_c2, nav_c3 = st.columns([1, 6, 1])
+        with nav_c1:
+            if st.button("◀ 前月", use_container_width=True):
+                st.session_state.view_month = (v_dt - pd.DateOffset(months=1)).strftime("%Y-%m")
+                for k in list(st.session_state.keys()):
+                    if str(k).startswith("main_cal"):
+                        del st.session_state[k]
+                st.rerun()
+        with nav_c2:
+            st.markdown(f"<h3 style='text-align: center; color: #00f2ff; margin-top: 0;'>{v_dt.strftime('%Y年%m月')}</h3>", unsafe_allow_html=True)
+        with nav_c3:
+            if st.button("次月 ▶", use_container_width=True):
+                st.session_state.view_month = (v_dt + pd.DateOffset(months=1)).strftime("%Y-%m")
+                for k in list(st.session_state.keys()):
+                    if str(k).startswith("main_cal"):
+                        del st.session_state[k]
+                st.rerun()
+
+        # --- PREVIEW SECTION ---
+        if p_date:
+            st.markdown(f"### 🔍 {p_date.replace('-', '/')} の記録詳細")
+            if not df.empty and 'player' in df.columns:
+                day_records = df[
+                    (df['date'] == p_date) &
+                    (df['player'].astype(str).str.strip() == st.session_state.active_p)
+                ]
+            else:
+                day_records = pd.DataFrame()
+
+            if day_records.empty:
+                st.info("この日の記録はありません。")
+            else:
+                for idx, row in day_records.iterrows():
+                    with st.container(border=True):
+                        c0, c1, c2, c3 = st.columns([3, 3, 3, 3])
+                        c0.markdown(f"**店舗:** {row['hall']}")
+                        c1.markdown(f"**時間:** {row.get('start_time', '--')} - {row.get('end_time', '--')}")
+                        c2.markdown(f"**収支:** ¥{int(row['balance']):,}")
+                        
+                        btn_col1, btn_col2 = c3.columns(2)
+                        if btn_col1.button("✏️ 編集", key=f"edit_{row['id']}", use_container_width=True):
+                            st.session_state.editing_id = row['id']
+                            st.session_state.selected_cal_date = p_date
+                            st.session_state.preview_date = None
+                            st.rerun()
+                        if btn_col2.button("🗑️", key=f"del_{row['id']}", type="primary", use_container_width=True):
+                            if row['player'].astype(str).str.strip() == st.session_state.active_p:
+                                df = df[df['id'] != row['id']]
+                                save_data(df)
+                                st.success("削除しました。")
+                                st.rerun()
+
+            st.write("")
+            col_a1, col_a2 = st.columns([4, 1])
+            with col_a1:
+                if st.button("➕ この日に新規記録を追加", use_container_width=True, type="primary"):
+                    st.session_state.selected_cal_date = p_date
+                    st.session_state.editing_id = None
+                    st.session_state.preview_date = None
+                    st.rerun()
+            with col_a2:
+                if st.button("✖ 閉じる", use_container_width=True):
+                    st.session_state.preview_date = None
+                    st.rerun()
+            st.markdown("---")
+
+        # --- CALENDAR ---
+        if not CALENDAR_AVAILABLE:
+            st.info("カレンダー機能を準備中です。")
+            st.date_input("日付を選択して記録", datetime.now(JST), key="tmp_d", on_change=lambda: st.session_state.update({"selected_cal_date": st.session_state.tmp_d.strftime("%Y-%m-%d")}))
+        else:
+            events = []
+            custom_css = ".fc-daygrid-day-number, .fc-toolbar-title { color: #00f2ff !important; } .fc-daygrid-day { cursor: pointer; } .fc-col-header-cell-cushion { cursor: default; } .fc-day-sat .fc-col-header-cell-cushion, .fc-day-sat .fc-daygrid-day-number { color: #4b8bff !important; } .fc-day-sun .fc-col-header-cell-cushion, .fc-day-sun .fc-daygrid-day-number { color: #ff4b4b !important; } .fc-event { border: none !important; background: transparent !important; } .fc-event-main { padding: 0 !important; text-align: center; } .fc-event-title { white-space: pre-wrap !important; word-wrap: break-word !important; font-size: clamp(0.6rem, 2.5vw, 0.9rem) !important; line-height: 1.1 !important; letter-spacing: -0.5px !important; } .fc-day-today { background: rgba(0, 242, 255, 0.05) !important; border: 1px solid #00f2ff !important; }"
+            
+            if not df.empty:
+                cal_df = df[df['player'].astype(str).str.strip() == st.session_state.active_p].copy()
+                d_bal = cal_df.groupby('date')['balance'].sum().reset_index()
+                for _, r in d_bal.iterrows():
+                    b = int(r['balance'])
+                    color = "#ffffff" if b >= 0 else "#ff4b4b"
+                    events.append({"id": f"s_{r['date']}", "title": f"{'+' if b >= 0 else ''}{b:,}円", "start": r['date'], "backgroundColor": "transparent", "borderColor": "transparent", "textColor": color, "extendedProps": {"type": "summary", "date": r['date']}})
+            
+            try:
+                for d, n in holidays.Japan(years=range(2024, 2027)).items():
+                    date_str = d.strftime("%Y-%m-%d")
+                    events.append({"title": n, "start": date_str, "display": "background", "backgroundColor": "#ff4b4b1a"})
+                    custom_css += f'.fc-day[data-date="{date_str}"] .fc-daygrid-day-number {{ color: #ff4b4b !important; }}\n'
+            except: pass
+
+            cal_res = calendar(events=events, options={"headerToolbar": False, "initialDate": f"{st.session_state.view_month}-01", "firstDay": int((v_dt.dayofweek + 1) % 7), "locale": "ja", "height": 700, "selectable": True, "editable": False}, custom_css=custom_css, callbacks=['dateClick', 'eventClick', 'select'], key=f"main_cal_{st.session_state.view_month}_{st.session_state.active_p}")
+            
+            if cal_res and "callback" in cal_res:
+                cb = cal_res.get("callback")
+                t_d = None
+                if cb in ["dateClick", "select"]:
+                    data = cal_res.get(cb, {})
+                    t_d = data.get("dateStr") or data.get("date") or data.get("startStr") or data.get("start")
+                elif cb == "eventClick":
+                    props = cal_res.get("eventClick", {}).get("event", {}).get("extendedProps", {})
+                    if props.get("type") == "summary":
+                        t_d = props.get("date")
+                
+                if t_d:
+                    try:
+                        dt = pd.to_datetime(t_d)
+                        if dt.tzinfo: dt = dt.tz_convert('Asia/Tokyo')
+                        clean_date = dt.strftime("%Y-%m-%d")
+                    except: clean_date = str(t_d).split("T")[0]
+                    st.session_state.preview_date = clean_date
+                    st.session_state.selected_cal_date = None
+                    st.session_state.editing_id = None
+                    st.rerun()
+
+# ============================================================
+# 分析
+# ============================================================
 elif menu == "分析 (月別/年別)":
     st.subheader("収支統計")
     if df.empty:
         st.warning("データがありません。")
     else:
-        # Player Filter Tabs
         tab_p1, tab_p2, tab_all = st.tabs(["Player 1", "Player 2", "全員"])
-        
+
         def show_analysis(filter_p):
             if filter_p == "全員":
                 df_v = df.copy()
             else:
-                df_v = df[df['player'] == filter_p].copy()
-            
+                df_v = df[df['player'].astype(str).str.strip() == filter_p].copy()
+
             if df_v.empty:
                 st.warning("データがありません。")
                 return
 
-            # --- Date Range Filter ---
             df_v['date_dt'] = pd.to_datetime(df_v['date'])
             min_date = df_v['date_dt'].min().date()
             max_date = df_v['date_dt'].max().date()
-            
+
             col_d1, col_d2 = st.columns(2)
             with col_d1:
                 start_date = st.date_input(f"{filter_p} - 開始日", min_date, key=f"start_{filter_p}")
             with col_d2:
                 end_date = st.date_input(f"{filter_p} - 終了日", max_date, key=f"end_{filter_p}")
-            
-            # Application of filter
-            df_v = df_v[(df_v['date_dt'].dt.date >= start_date) & (df_v['date_dt'].dt.date <= end_date)]
 
+            df_v = df_v[
+                (df_v['date_dt'].dt.date >= start_date) &
+                (df_v['date_dt'].dt.date <= end_date)
+            ]
             if df_v.empty:
                 st.info("指定された期間のデータはありません。")
                 return
 
-            # Metrics
             t_bal = df_v['balance'].sum()
             t_hours = df_v['hours'].sum()
             h_ly = t_bal / t_hours if t_hours > 0 else 0
-            
+
             mc1, mc2, mc3 = st.columns(3)
             mc1.metric("トータル収支", f"¥{int(t_bal):,}")
             mc2.metric("合計稼働時間", f"{t_hours:.1f}h")
             mc3.metric("平均時給", f"¥{int(h_ly):,}")
-            
-            # --- Periodic Summaries (3, 6, 9 months, 1 year) ---
+
             st.markdown("#### 直近サマリー (全期間から算出)")
             p_cols = st.columns(4)
             now_dt = pd.Timestamp.now()
-            
-            # Use data filtered by player but NOT by the specific date range for these "Recent" summaries
+
             if filter_p == "全員":
                 df_recent_base = df.copy()
             else:
-                df_recent_base = df[df['player'] == filter_p].copy()
+                df_recent_base = df[df['player'].astype(str).str.strip() == filter_p].copy()
             df_recent_base['date_dt'] = pd.to_datetime(df_recent_base['date'])
 
             for i, months in enumerate([3, 6, 9, 12]):
                 start_p = now_dt - pd.DateOffset(months=months)
                 label = f"{months}ヶ月" if months < 12 else "1年"
                 df_p = df_recent_base[df_recent_base['date_dt'] >= start_p]
-                
+
                 p_bal = df_p['balance'].sum()
                 p_hours = df_p['hours'].sum()
                 p_hourly = p_bal / p_hours if p_hours > 0 else 0
-                
+
                 with p_cols[i]:
                     st.markdown(f"""
-                    <div style="padding:10px; border:1px solid rgba(0,242,255,0.2); border-radius:10px; background:rgba(0,242,255,0.05); text-align:center;">
+                    <div style="padding:10px; border:1px solid rgba(0,242,255,0.2);
+                                border-radius:10px; background:rgba(0,242,255,0.05); text-align:center;">
                         <div style="font-weight:bold; color:#00f2ff; font-size:0.9em;">直近{label}</div>
                         <div style="font-size:1.1em; font-weight:bold; margin:5px 0;">¥{int(p_bal):,}</div>
                         <div style="font-size:0.8em; opacity:0.8;">{p_hours:.1f}h | ¥{int(p_hourly):,}/h</div>
                     </div>
                     """, unsafe_allow_html=True)
-            st.write("")
 
-            # Yearly/Monthly aggregation
+            st.write("")
             df_v['year'] = df_v['date_dt'].dt.year
             df_v['month'] = df_v['date_dt'].dt.strftime('%Y/%m')
-            
-            v_type = st.radio(f"{filter_p} - 表示単位", ["月別", "年別"], horizontal=True, key=f"v_type_{filter_p}")
+
+            v_type = st.radio(f"{filter_p} - 表示単位", ["月別", "年別"],
+                               horizontal=True, key=f"v_type_{filter_p}")
             g_col = 'month' if v_type == "月別" else 'year'
-        
-            summ = df_v.groupby(g_col).agg({
-                'balance': 'sum',
-                'hours': 'sum'
-            }).sort_index(ascending=False)
-            
+
             import numpy as np
+            summ = df_v.groupby(g_col).agg({'balance': 'sum', 'hours': 'sum'}).sort_index(ascending=False)
             summ['balance'] = summ['balance'].astype(int)
             summ['時給'] = (summ['balance'] / summ['hours'].replace(0, np.nan)).fillna(0).astype(int)
-            
+
             st.dataframe(summ.style.format({
                 'balance': '¥{:,}',
                 'hours': '{:.1f}h',
@@ -723,115 +703,88 @@ elif menu == "分析 (月別/年別)":
         with tab_all:
             show_analysis("全員")
 
+# ============================================================
+# 貯玉・貯メダル管理
+# ============================================================
 elif menu == "貯玉・貯メダル管理":
     st.subheader("貯玉・貯メダル管理")
-    
-    # Select player
+
     p_idx = 0 if st.session_state.active_p == "Player 1" else 1
-    p_sel = st.radio("表示プレイヤー", ["Player 1", "Player 2"], horizontal=True, index=p_idx, key="p_savings")
+    p_sel = st.radio("表示プレイヤー", ["Player 1", "Player 2"],
+                     horizontal=True, index=p_idx, key="p_savings")
     st.session_state.active_p = p_sel
 
-    # Edit / Add Form
-    st.markdown("#### 新規・更新登録")
-    with st.form("savings_form", clear_on_submit=True):
-        # Allow selection from existing halls in records for convenience
-        h_list = sorted(list(set(df['hall'].dropna().unique().tolist() + df_s['hall'].dropna().unique().tolist())))
-        hall_sel = st.selectbox("ホール名", ["新規入力..."] + h_list)
-        hall_new = st.text_input("ホール名を入力 (上の「新規入力...」を選択時)")
-        
-        col_s1, col_s2 = st.columns(2)
-        with col_s1:
-            medals = st.number_input("貯メダル (枚)", min_value=0, value=0, step=50)
-        with col_s2:
-            balls = st.number_input("貯玉 (玉)", min_value=0, value=0, step=125)
-            
-        submitted = st.form_submit_button("保存・更新", type="primary", use_container_width=True)
-        if submitted:
-            target_hall = hall_new if hall_sel == "新規入力..." else hall_sel
-            if not target_hall:
-                st.error("ホール名を入力してください。")
-            else:
-                # Update existing or add new
-                updated = False
-                for idx, row in df_s.iterrows():
-                    if row['player'] == p_sel and row['hall'] == target_hall:
-                        df_s.at[idx, 'saved_medals'] = medals
-                        df_s.at[idx, 'saved_balls'] = balls
-                        df_s.at[idx, 'updated_at'] = datetime.now(JST).strftime('%Y-%m-%d %H:%M')
-                        updated = True
-                        break
-                
-                if not updated:
-                    new_r = {
+    h_list = sorted(df['hall'].dropna().unique().tolist())
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("### 📥 貯玉・貯メダル登録")
+        with st.form("savings_form"):
+            hall = st.selectbox("店舗名", h_list)
+            s_m = st.number_input("貯メダル (枚)", min_value=0, step=100)
+            s_b = st.number_input("貯玉 (玉)", min_value=0, step=100)
+            if st.form_submit_button("更新"):
+                idx_list = df_s[(df_s['player'] == p_sel) & (df_s['hall'] == hall)].index
+                if not idx_list.empty:
+                    df_s.at[idx_list[0], 'saved_medals'] = s_m
+                    df_s.at[idx_list[0], 'saved_balls'] = s_b
+                    df_s.at[idx_list[0], 'updated_at'] = datetime.now(JST).strftime('%Y-%m-%d %H:%M')
+                    st.success("更新しました。")
+                else:
+                    new_row = {
                         "id": str(int(datetime.now().timestamp())),
                         "player": p_sel,
-                        "hall": target_hall,
-                        "saved_medals": medals,
-                        "saved_balls": balls,
+                        "hall": hall,
+                        "saved_medals": s_m,
+                        "saved_balls": s_b,
                         "updated_at": datetime.now(JST).strftime('%Y-%m-%d %H:%M')
                     }
-                    df_s = pd.concat([df_s, pd.DataFrame([new_r])], ignore_index=True)
-                    
+                    df_s = pd.concat([df_s, pd.DataFrame([new_row])], ignore_index=True)
+                    st.success("新規登録しました。")
                 save_savings(df_s)
-                st.success(f"{target_hall} のデータを更新しました！")
                 st.rerun()
 
-    st.divider()
-    
-    st.markdown("#### 登録済みデータ一覧")
-    p_df_s = df_s[df_s['player'] == p_sel].copy()
-    if p_df_s.empty:
-        st.info("データがありません。")
-    else:
-        # Display as a dataframe or cards
-        p_df_s = p_df_s.sort_values('updated_at', ascending=False)
-        total_yen_val = 0
-        for _, row in p_df_s.iterrows():
-            with st.container():
-                rc1, rc2, rc3 = st.columns([4, 2, 1])
-                with rc1:
-                    st.markdown(f"**{row['hall']}**")
-                    st.caption(f"最終更新: {row['updated_at']}")
-                with rc2:
-                    st.markdown(f"🎰 {int(row['saved_medals']):,} 枚<br>🎱 {int(row['saved_balls']):,} 玉", unsafe_allow_html=True)
-                with rc3:
-                    if st.button("削除", key=f"del_s_{row['id']}"):
-                        df_s = df_s[df_s['id'] != row['id']]
-                        save_savings(df_s)
-                        st.rerun()
-                        
-                # --- YEN Value Calculation ---
-                hall_hist = df[df['hall'] == row['hall']]
-                latest_rate = 5.5 # Default fallback
-                rate_note = "(デフォルト)"
-                if not hall_hist.empty:
-                    latest_rate = hall_hist.iloc[-1]['rate']
-                    rate_note = f"(交換率: {latest_rate})"
-                    
-                yen_val = 0
-                if latest_rate > 0:
-                    yen_val = (row['saved_medals'] + row['saved_balls']) * (100 / latest_rate)
-                    
-                total_yen_val += yen_val
-                    
-                st.markdown(f"<div style='text-align: right; font-size: 0.9em; color: #00f2ff; margin-top: -10px;'>💰 約 <b>¥{int(yen_val):,}</b> 相当 <span style='font-size: 0.75em; color: #888;'>{rate_note}</span></div>", unsafe_allow_html=True)
-                
-                st.markdown("<hr style='margin: 10px 0; border: 0.5px solid rgba(0,242,255,0.1);'>", unsafe_allow_html=True)
-                
-        # Total line
-        st.markdown(f"<div style='text-align: right; font-size: 1.2em; color: #fff; margin-top: 10px; padding: 10px; background: rgba(0, 242, 255, 0.1); border-radius: 5px; border-left: 5px solid #00f2ff;'><b>総資産額（円換算合計）: <span style='color:#00f2ff;'>約 ¥{int(total_yen_val):,}</span> 相当</b></div>", unsafe_allow_html=True)
+    with col2:
+        st.markdown("### 📊 現在の貯玉・貯メダル一覧")
+        p_savings = df_s[df_s['player'] == p_sel]
+        if p_savings.empty:
+            st.info("登録されているデータはありません。")
+        else:
+            st.dataframe(p_savings[['hall', 'saved_medals', 'saved_balls', 'updated_at']], use_container_width=True, hide_index=True)
 
+# ============================================================
+# 一括インポート
+# ============================================================
 elif menu == "一括インポート":
-    st.subheader("一括インポート")
-    u = st.file_uploader("CSVを選択", type="csv")
-    if u and st.button("インポート実行"):
-        df = pd.concat([df, pd.read_csv(u)], ignore_index=True)
-        save_data(df)
-        st.success("完了")
+    st.subheader("CSVインポート")
+    st.info("既存のCSVファイルと同じ形式のレコードを一括で追加します。")
+    up_file = st.file_uploader("CSVファイルを選択", type="csv")
+    if up_file:
+        up_df = pd.read_csv(up_file)
+        st.write("プレビュー:")
+        st.dataframe(up_df.head())
+        if st.button("インポート実行"):
+            df = pd.concat([df, up_df], ignore_index=True)
+            save_data(df)
+            st.success("インポート完了！")
+            st.rerun()
 
+# ============================================================
+# 設定
+# ============================================================
 elif menu == "設定":
-    st.subheader("設定")
-    if st.button("⚠️ 全データ初期化"):
-        save_data(pd.DataFrame(columns=df.columns))
-        st.success("初期化完了")
+    st.subheader("システム設定")
+    if st.button("キャッシュをクリア"):
+        for k in list(st.session_state.keys()):
+            del st.session_state[k]
+        st.success("キャッシュをクリアしました。再読み込みしてください。")
         st.rerun()
+    
+    st.divider()
+    st.write("#### データの書き出し")
+    if not df.empty:
+        csv = df.to_csv(index=False).encode('utf-8-sig')
+        st.download_button("records.csv をダウンロード", csv, "records.csv", "text/csv")
+        
+        csv_s = df_s.to_csv(index=False).encode('utf-8-sig')
+        st.download_button("savings.csv をダウンロード", csv_s, "savings.csv", "text/csv")
