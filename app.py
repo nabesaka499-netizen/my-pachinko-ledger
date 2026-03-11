@@ -157,10 +157,10 @@ def load_savings():
             except Exception:
                 df = pd.DataFrame()
 
-        expected_cols = ["id", "player", "hall", "saved_medals", "saved_balls", "updated_at"]
+        expected_cols = ["id", "player", "hall", "saved_medals", "saved_balls", "medal_rate", "ball_rate", "updated_at"]
         for col in expected_cols:
             if col not in df.columns:
-                df[col] = 0 if col in ["saved_medals", "saved_balls"] else ""
+                df[col] = 0.0 if col in ["medal_rate", "ball_rate"] else (0 if col in ["saved_medals", "saved_balls"] else "")
 
         st.session_state.savings = df
     return st.session_state.savings
@@ -221,14 +221,17 @@ def get_last_player_defaults(df, player):
             return l['hall'], l['machine']
     return "新規入力...", "新規入力..."
 
-def get_last_hall_savings(df, player, hall_name):
-    if df.empty or not hall_name or hall_name in ["記録しない", "新規入力..."]:
+def get_last_hall_savings(df_s, player, hall_name, game_type="スロット"):
+    if df_s.empty or not hall_name or hall_name in ["記録しない", "新規入力..."]:
         return 0
-    p_df = df[(df['player'] == player) & (df['hall'] == hall_name)]
+    p_df = df_s[(df_s['player'] == player) & (df_s['hall'] == hall_name)]
     if p_df.empty:
         return 0
-    l = p_df.sort_values(by=['date', 'id'], ascending=False).iloc[0]
-    return int(l.get('end_savings', 0) - (l.get('cash_out_yen', 0) / 100 * l.get('rate', 1.0)))
+    l = p_df.iloc[0]
+    if game_type == "スロット":
+        return int(l.get('saved_medals', 0))
+    else:
+        return int(l.get('saved_balls', 0))
 
 # --- Main Logic ---
 df = load_data()
@@ -334,7 +337,9 @@ if menu == "ホーム・記録":
 
             invest = st.number_input("投資 (¥)", min_value=0, step=500,
                                      value=int(e_row['invest']) if e_row is not None else 0)
-            l_sav = get_last_hall_savings(df, f_p, hall)
+            cash_out = st.number_input("換金額 (回収) (¥)", min_value=0, step=500,
+                                       value=int(e_row.get('cash_out_yen', 0)) if e_row is not None else 0)
+            l_sav = get_last_hall_savings(df_s, f_p, hall, gt)
             s_s = st.number_input("開始貯メダル/玉", min_value=0,
                                   value=int(e_row['start_savings'] if e_row is not None else l_sav))
             s_e = st.number_input("終了貯メダル/玉", min_value=0,
@@ -368,7 +373,7 @@ if menu == "ホーム・記録":
             st.info(f"⏳ **稼働時間: {delta_hr:.1f} 時間** (保存前に確認)")
 
         if st.button("保存する", use_container_width=True, type="primary"):
-            bal = round((s_e - s_s) * (100 / rate) - invest)
+            bal = round((s_e - s_s) * (100 / rate) - invest) + cash_out
             n_row = {
                 "id": e_id if e_id else str(int(datetime.now().timestamp())),
                 "player": f_p,
@@ -378,13 +383,13 @@ if menu == "ホーム・記録":
                 "machine": mach,
                 "hours": round(delta_hr, 1),
                 "invest": invest,
-                "recovery": 0,
+                "recovery": cash_out,
                 "balance": bal,
                 "memo": memo,
                 "start_savings": s_s,
                 "end_savings": s_e,
                 "rate": rate,
-                "cash_out_yen": 0,
+                "cash_out_yen": cash_out,
                 "start_time": start_time.strftime("%H:%M"),
                 "end_time": end_time.strftime("%H:%M")
             }
@@ -398,8 +403,10 @@ if menu == "ホーム・記録":
                 if row['player'] == f_p and row['hall'] == hall:
                     if gt == "スロット":
                         df_s.at[idx, 'saved_medals'] = s_e
+                        df_s.at[idx, 'medal_rate'] = float(rate)
                     else:
                         df_s.at[idx, 'saved_balls'] = s_e
+                        df_s.at[idx, 'ball_rate'] = float(rate)
                     df_s.at[idx, 'updated_at'] = datetime.now(JST).strftime('%Y-%m-%d %H:%M')
                     updated = True
                     break
@@ -411,6 +418,8 @@ if menu == "ホーム・記録":
                     "hall": hall,
                     "saved_medals": s_e if gt == "スロット" else 0,
                     "saved_balls": s_e if gt == "パチンコ" else 0,
+                    "medal_rate": float(rate) if gt == "スロット" else 0.0,
+                    "ball_rate": float(rate) if gt == "パチンコ" else 0.0,
                     "updated_at": datetime.now(JST).strftime('%Y-%m-%d %H:%M')
                 }
                 df_s = pd.concat([df_s, pd.DataFrame([new_s_row])], ignore_index=True)
@@ -714,43 +723,76 @@ elif menu == "貯玉・貯メダル管理":
                      horizontal=True, index=p_idx, key="p_savings")
     st.session_state.active_p = p_sel
 
-    h_list = sorted(df['hall'].dropna().unique().tolist())
+    # 円評価額の計算ロジック
+    p_savings = df_s[df_s['player'] == p_sel].copy()
     
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("### 📥 貯玉・貯メダル登録")
-        with st.form("savings_form"):
-            hall = st.selectbox("店舗名", h_list)
-            s_m = st.number_input("貯メダル (枚)", min_value=0, step=100)
-            s_b = st.number_input("貯玉 (玉)", min_value=0, step=100)
-            if st.form_submit_button("更新"):
-                idx_list = df_s[(df_s['player'] == p_sel) & (df_s['hall'] == hall)].index
-                if not idx_list.empty:
-                    df_s.at[idx_list[0], 'saved_medals'] = s_m
-                    df_s.at[idx_list[0], 'saved_balls'] = s_b
-                    df_s.at[idx_list[0], 'updated_at'] = datetime.now(JST).strftime('%Y-%m-%d %H:%M')
-                    st.success("更新しました。")
-                else:
-                    new_row = {
-                        "id": str(int(datetime.now().timestamp())),
-                        "player": p_sel,
-                        "hall": hall,
-                        "saved_medals": s_m,
-                        "saved_balls": s_b,
-                        "updated_at": datetime.now(JST).strftime('%Y-%m-%d %H:%M')
-                    }
-                    df_s = pd.concat([df_s, pd.DataFrame([new_row])], ignore_index=True)
-                    st.success("新規登録しました。")
-                save_savings(df_s)
-                st.rerun()
+    def calc_yen(row, rate_col, amt_col):
+        rate = row.get(rate_col, 0)
+        amt = row.get(amt_col, 0)
+        if pd.isna(rate) or rate <= 0:
+            return 0
+        return int((amt / rate) * 100)
 
-    with col2:
-        st.markdown("### 📊 現在の貯玉・貯メダル一覧")
-        p_savings = df_s[df_s['player'] == p_sel]
-        if p_savings.empty:
-            st.info("登録されているデータはありません。")
-        else:
-            st.dataframe(p_savings[['hall', 'saved_medals', 'saved_balls', 'updated_at']], use_container_width=True, hide_index=True)
+    p_savings['メダル評価額 (¥)'] = p_savings.apply(lambda r: calc_yen(r, 'medal_rate', 'saved_medals'), axis=1)
+    p_savings['玉評価額 (¥)'] = p_savings.apply(lambda r: calc_yen(r, 'ball_rate', 'saved_balls'), axis=1)
+    p_savings['合計評価額 (¥)'] = p_savings['メダル評価額 (¥)'] + p_savings['玉評価額 (¥)']
+
+    total_yen = p_savings['合計評価額 (¥)'].sum()
+    st.metric(f"💰 {p_sel} の総資産 (円評価額)", f"¥{total_yen:,}")
+    st.divider()
+
+    st.markdown("### 📊 貯玉・貯メダル一覧 (編集・削除可能)")
+    st.info("セルをクリックして直接数値を編集できます。行の追加（下部）や削除（選択してDelete）も可能です。")
+
+    edit_df = p_savings[['hall', 'saved_medals', 'saved_balls', 'medal_rate', 'ball_rate']].copy()
+    
+    edited_df = st.data_editor(
+        edit_df,
+        num_rows="dynamic",
+        column_config={
+            "hall": st.column_config.TextColumn("店舗名", required=True),
+            "saved_medals": st.column_config.NumberColumn("貯メダル (枚)", min_value=0, step=100),
+            "saved_balls": st.column_config.NumberColumn("貯玉 (玉)", min_value=0, step=100),
+            "medal_rate": st.column_config.NumberColumn("メダル交換率 (例:5.06)", min_value=0.0, format="%.2f"),
+            "ball_rate": st.column_config.NumberColumn("玉交換率 (例:28.0)", min_value=0.0, format="%.2f"),
+        },
+        use_container_width=True,
+        key="savings_editor"
+    )
+
+    if st.button("💾 変更を保存する", type="primary", use_container_width=True):
+        # 該当プレイヤーの既存データを削除
+        df_s = df_s[df_s['player'] != p_sel].copy()
+        
+        # 新しいデータを追加
+        if not edited_df.empty:
+            edited_copy = edited_df.copy()
+            edited_copy['player'] = p_sel
+            edited_copy['id'] = [str(int(datetime.now().timestamp()) + i) for i in range(len(edited_copy))]
+            edited_copy['updated_at'] = datetime.now(JST).strftime('%Y-%m-%d %H:%M')
+            
+            # NoneやNaNを適切に0.0に埋める
+            edited_copy['saved_medals'] = edited_copy['saved_medals'].fillna(0).astype(int)
+            edited_copy['saved_balls'] = edited_copy['saved_balls'].fillna(0).astype(int)
+            edited_copy['medal_rate'] = edited_copy['medal_rate'].fillna(0.0)
+            edited_copy['ball_rate'] = edited_copy['ball_rate'].fillna(0.0)
+
+            df_s = pd.concat([df_s, edited_copy], ignore_index=True)
+            
+        save_savings(df_s)
+        st.success("貯玉データを同期しました！")
+        st.rerun()
+
+    st.markdown("#### 🏢 店舗別 資産評価額")
+    if p_savings.empty:
+        st.write("データがありません。")
+    else:
+        disp_df = p_savings[['hall', 'メダル評価額 (¥)', '玉評価額 (¥)', '合計評価額 (¥)', 'updated_at']]
+        st.dataframe(disp_df.style.format({
+            'メダル評価額 (¥)': '¥{:,}',
+            '玉評価額 (¥)': '¥{:,}',
+            '合計評価額 (¥)': '¥{:,}'
+        }), use_container_width=True, hide_index=True)
 
 # ============================================================
 # 一括インポート
