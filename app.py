@@ -525,24 +525,11 @@ if menu == "ホーム・記録":
                         del st.session_state[k]
                 st.rerun()
         
-        # --- [案A] 選択中の日の詳細への誘導ボタンをここに配置 (カレンダーの上) ---
-        if st.session_state.get('tentative_date'):
-            t_date = st.session_state.tentative_date
-            try:
-                display_date = datetime.strptime(t_date, "%Y-%m-%d").strftime("%m/%d")
-            except:
-                display_date = t_date
-            
-            with st.container(border=True):
-                st.markdown(f"### 📍 選択中: {display_date}")
-                if st.button(f"👉 {display_date} の詳細を表示 / 記録を追加", use_container_width=True, type="primary"):
-                    st.session_state.preview_date = t_date
-                    st.session_state.tentative_date = None
-                    st.session_state.selected_cal_date = None
-                    st.session_state.editing_id = None
-                    st.rerun()
-        elif not st.session_state.preview_date:
-            st.info("💡 カレンダーの日付をタップして選択してください。")
+        # --- [案A] 選択中の日の詳細への誘導ボタン用プレースホルダー ---
+        btn_placeholder = st.empty()
+        
+        if not st.session_state.get('tentative_date') and not st.session_state.preview_date:
+             btn_placeholder.info("💡 カレンダーの日付をタップして選択してください。")
 
         # --- PREVIEW SECTION ---
         if p_date:
@@ -638,7 +625,6 @@ if menu == "ホーム・記録":
                 callbacks=['dateClick', 'eventClick'],
                 key=f"main_cal_{st.session_state.view_month}_{st.session_state.active_p}"
             )
-            
             if cal_res and "callback" in cal_res:
                 cb = cal_res.get("callback")
                 t_d = None
@@ -656,12 +642,34 @@ if menu == "ホーム・記録":
                     except:
                         clean_date = str(t_d).split("T")[0]
                     
-                    # 変更があった場合のみrerun
-                    if st.session_state.get('tentative_date') != clean_date:
+                    # すでに選択中の日を再度クリックした場合は、詳細を開く（ダブルクリック対応）
+                    if st.session_state.get('tentative_date') == clean_date:
+                        st.session_state.preview_date = clean_date
+                        st.session_state.tentative_date = None
+                        st.session_state.selected_cal_date = None
+                        st.session_state.editing_id = None
+                        st.rerun()
+                    else:
+                        # 別の日の場合は選択状態を更新
                         st.session_state.tentative_date = clean_date
                         st.rerun()
 
-            # ボタンは上部に移動したため、ここは削除
+            # --- プレースホルダーの中身を更新 (現在の状態を反映) ---
+            if st.session_state.get('tentative_date'):
+                t_date = st.session_state.tentative_date
+                try:
+                    display_date = datetime.strptime(t_date, "%Y-%m-%d").strftime("%m/%d")
+                except:
+                    display_date = t_date
+                
+                with btn_placeholder.container(border=True):
+                    st.markdown(f"#### 📍 選択中: {display_date}")
+                    if st.button(f"👉 {display_date} の詳細を表示 / 記録を追加", use_container_width=True, type="primary"):
+                        st.session_state.preview_date = t_date
+                        st.session_state.tentative_date = None
+                        st.session_state.selected_cal_date = None
+                        st.session_state.editing_id = None
+                        st.rerun()
 
 # ============================================================
 # 分析
