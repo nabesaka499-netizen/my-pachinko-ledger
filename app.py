@@ -108,6 +108,11 @@ def load_data():
         for col in str_cols:
             if col in df.columns:
                 df[col] = df[col].fillna("")
+        
+        if 'date' in df.columns:
+            try:
+                df['date'] = pd.to_datetime(df['date']).dt.strftime('%Y-%m-%d')
+            except: pass
 
     st.session_state.records = df
     return st.session_state.records
@@ -623,24 +628,34 @@ if menu == "ホーム・記録":
                         t_d = props.get("date")
                 
                 if t_d:
-                    # 日付文字列の正規化（念のため）
+                    # 日付文字列の正規化
                     try:
                         clean_date = pd.to_datetime(t_d).strftime("%Y-%m-%d")
                     except:
                         clean_date = str(t_d).split("T")[0]
                     
-                    # ロジック判定
-                    if st.session_state.get('tentative_date') == clean_date:
-                        # 2回目：詳細表示へ移行
-                        st.session_state.preview_date = clean_date
-                        st.session_state.tentative_date = None
-                        st.session_state.selected_cal_date = None
-                        st.session_state.editing_id = None
-                        st.rerun()
-                    else:
-                        # 1回目：選択ハイライトのみ
-                        st.session_state.tentative_date = clean_date
-                        st.rerun()
+                    # 1クリックで選択状態にする（以前の2段階ロジックは廃止）
+                    st.session_state.tentative_date = clean_date
+                    st.rerun()
+
+            # --- 案A：選択中の日の詳細を表示するボタンを設置 ---
+            if st.session_state.get('tentative_date'):
+                t_date = st.session_state.tentative_date
+                # 日付の表示形式を少し整える (例: 2026-03-13 -> 3/13)
+                try:
+                    display_date = datetime.strptime(t_date, "%Y-%m-%d").strftime("%m/%d")
+                except:
+                    display_date = t_date
+                
+                st.markdown(f"### 📍 選択中: {display_date}")
+                if st.button(f"👉 {display_date} の詳細を表示 / 記録を追加", use_container_width=True, type="primary"):
+                    st.session_state.preview_date = t_date
+                    st.session_state.tentative_date = None # 開いたら選択はクリア
+                    st.session_state.selected_cal_date = None
+                    st.session_state.editing_id = None
+                    st.rerun()
+            else:
+                st.info("カレンダーの日付をタップして選択してください。")
 
 # ============================================================
 # 分析
