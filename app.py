@@ -596,28 +596,45 @@ if menu == "ホーム・記録":
             if st.session_state.get('tentative_date'):
                 custom_css += f'.fc-day[data-date="{st.session_state.tentative_date}"] {{ background: rgba(0, 242, 255, 0.2) !important; border: 2px solid #00f2ff !important; }}\n'
 
-            cal_res = calendar(events=events, options={"headerToolbar": False, "initialDate": f"{st.session_state.view_month}-01", "firstDay": int((v_dt.dayofweek + 1) % 7), "locale": "ja", "height": 700, "selectable": True, "editable": False}, custom_css=custom_css, callbacks=['dateClick', 'eventClick'], key=f"main_cal_{st.session_state.view_month}_{st.session_state.active_p}")
+            # Keyを状況に応じて変えることで、コンポーネント内の古い状態を強制リセットする
+            cal_key = f"cal_{st.session_state.view_month}_{st.session_state.active_p}_{st.session_state.get('tentative_date', 'none')}"
+            
+            cal_res = calendar(
+                events=events,
+                options={
+                    "headerToolbar": False,
+                    "initialDate": f"{st.session_state.view_month}-01",
+                    "firstDay": int((v_dt.dayofweek + 1) % 7),
+                    "locale": "ja",
+                    "height": 700,
+                    "selectable": True,
+                    "editable": False
+                },
+                custom_css=custom_css,
+                callbacks=['dateClick', 'eventClick'],
+                key=cal_key
+            )
             
             if cal_res and "callback" in cal_res:
                 cb = cal_res.get("callback")
                 t_d = None
                 if cb == "dateClick":
-                    data = cal_res.get(cb, {})
-                    t_d = data.get("dateStr") or data.get("date")
+                    t_d = cal_res.get("dateClick", {}).get("dateStr")
                 elif cb == "eventClick":
                     props = cal_res.get("eventClick", {}).get("event", {}).get("extendedProps", {})
                     if props.get("type") == "summary":
                         t_d = props.get("date")
                 
                 if t_d:
+                    # 日付文字列の正規化（念のため）
                     try:
-                        dt = pd.to_datetime(t_d)
-                        if dt.tzinfo: dt = dt.tz_convert('Asia/Tokyo')
-                        clean_date = dt.strftime("%Y-%m-%d")
-                    except: clean_date = str(t_d).split("T")[0]
+                        clean_date = pd.to_datetime(t_d).strftime("%Y-%m-%d")
+                    except:
+                        clean_date = str(t_d).split("T")[0]
                     
+                    # ロジック判定
                     if st.session_state.get('tentative_date') == clean_date:
-                        # 2回目：詳細表示へ
+                        # 2回目：詳細表示へ移行
                         st.session_state.preview_date = clean_date
                         st.session_state.tentative_date = None
                         st.session_state.selected_cal_date = None
