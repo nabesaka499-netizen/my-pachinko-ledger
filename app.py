@@ -79,35 +79,33 @@ def load_data():
             except Exception:
                 df = pd.DataFrame()
 
-        # Schema Fix
-        expected_cols = [
-            "id", "player", "game_type", "date", "hall", "machine",
-            "hours", "invest", "recovery", "balance", "memo",
-            "start_savings", "end_savings", "rate", "cash_out_yen",
-            "start_time", "end_time"
-        ]
-        for col in expected_cols:
-            if col not in df.columns:
-                df[col] = 0 if col in ["invest", "recovery", "balance", "start_savings", "end_savings",
-                                        "cash_out_yen", "hours", "rate"] else ""
-
-        if not df.empty:
-            df['player'] = df['player'].astype(str).str.strip()
-            df['date'] = pd.to_datetime(df['date'], errors='coerce').dt.strftime('%Y-%m-%d')
-            df = df.dropna(subset=['date'])
-            # 数値列の修正
-            num_cols = ["invest", "recovery", "balance", "start_savings", "end_savings", "rate", "cash_out_yen", "hours"]
-            for col in num_cols:
-                if col in df.columns:
-                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
-            
-            # 文字列型の列のNaN対策
-            str_cols = ["player", "game_type", "hall", "machine", "memo", "start_time", "end_time"]
-            for col in str_cols:
-                if col in df.columns:
-                    df[col] = df[col].fillna("")
-
         st.session_state.records = df
+
+    # セッションから取得したdfに対してもスキーマ保証と型キャストを行う（キャッシュ後続のアプデ対策）
+    df = st.session_state.records.copy()
+    expected_cols = [
+        "id", "player", "game_type", "date", "hall", "machine",
+        "hours", "invest", "recovery", "balance", "memo",
+        "start_savings", "end_savings", "rate", "cash_out_yen",
+        "start_time", "end_time"
+    ]
+    for col in expected_cols:
+        if col not in df.columns:
+            df[col] = 0 if col in ["invest", "recovery", "balance", "start_savings", "end_savings",
+                                    "cash_out_yen", "hours", "rate"] else ""
+    
+    if not df.empty:
+        df['player'] = df['player'].astype(str).str.strip()
+        num_cols = ["invest", "recovery", "balance", "start_savings", "end_savings", "rate", "cash_out_yen", "hours"]
+        for col in num_cols:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+        str_cols = ["player", "game_type", "hall", "machine", "memo", "start_time", "end_time"]
+        for col in str_cols:
+            if col in df.columns:
+                df[col] = df[col].fillna("")
+
+    st.session_state.records = df
     return st.session_state.records
 
 def save_data(df):
@@ -157,12 +155,15 @@ def load_savings():
             except Exception:
                 df = pd.DataFrame()
 
-        expected_cols = ["id", "player", "hall", "saved_medals", "saved_balls", "medal_rate", "ball_rate", "updated_at"]
-        for col in expected_cols:
-            if col not in df.columns:
-                df[col] = 0.0 if col in ["medal_rate", "ball_rate"] else (0 if col in ["saved_medals", "saved_balls"] else "")
-
         st.session_state.savings = df
+
+    df_s = st.session_state.savings.copy()
+    expected_cols_s = ["id", "player", "hall", "saved_medals", "saved_balls", "medal_rate", "ball_rate", "updated_at"]
+    for col in expected_cols_s:
+        if col not in df_s.columns:
+            df_s[col] = 0.0 if col in ["medal_rate", "ball_rate"] else (0 if col in ["saved_medals", "saved_balls"] else "")
+    
+    st.session_state.savings = df_s
     return st.session_state.savings
 
 def save_savings(df):
