@@ -48,6 +48,10 @@ if "view_month" not in st.session_state:
     st.session_state.view_month = datetime.now().strftime("%Y-%m")
 if "nav_lock" not in st.session_state:
     st.session_state.nav_lock = False
+if "preview_date" not in st.session_state:
+    st.session_state.preview_date = None
+if "tentative_date" not in st.session_state:
+    st.session_state.tentative_date = None
 
 # --- Helper Functions ---
 def get_github_auth():
