@@ -640,9 +640,12 @@ if menu == "ホーム・記録":
                         t_d = props.get("date")
                 
                 if t_d:
-                    # 日付文字列の正規化
+                    # 日付文字列の正規化（タイムゾーンを考慮してJSTに変換）
                     try:
-                        clean_date = pd.to_datetime(t_d).strftime("%Y-%m-%d")
+                        ts = pd.to_datetime(t_d)
+                        if ts.tzinfo is not None:
+                            ts = ts.astimezone(JST)
+                        clean_date = ts.strftime("%Y-%m-%d")
                     except:
                         clean_date = str(t_d).split("T")[0]
                     
