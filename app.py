@@ -565,6 +565,7 @@ if menu == "ホーム・記録":
             with col_a2:
                 if st.button("✖ 閉じる", use_container_width=True):
                     st.session_state.preview_date = None
+                    st.session_state.tentative_date = None
                     st.rerun()
             st.markdown("---")
 
@@ -595,14 +596,14 @@ if menu == "ホーム・記録":
             if st.session_state.get('tentative_date'):
                 custom_css += f'.fc-day[data-date="{st.session_state.tentative_date}"] {{ background: rgba(0, 242, 255, 0.2) !important; border: 2px solid #00f2ff !important; }}\n'
 
-            cal_res = calendar(events=events, options={"headerToolbar": False, "initialDate": f"{st.session_state.view_month}-01", "firstDay": int((v_dt.dayofweek + 1) % 7), "locale": "ja", "height": 700, "selectable": True, "editable": False}, custom_css=custom_css, callbacks=['dateClick', 'eventClick', 'select'], key=f"main_cal_{st.session_state.view_month}_{st.session_state.active_p}")
+            cal_res = calendar(events=events, options={"headerToolbar": False, "initialDate": f"{st.session_state.view_month}-01", "firstDay": int((v_dt.dayofweek + 1) % 7), "locale": "ja", "height": 700, "selectable": True, "editable": False}, custom_css=custom_css, callbacks=['dateClick', 'eventClick'], key=f"main_cal_{st.session_state.view_month}_{st.session_state.active_p}")
             
             if cal_res and "callback" in cal_res:
                 cb = cal_res.get("callback")
                 t_d = None
-                if cb in ["dateClick", "select"]:
+                if cb == "dateClick":
                     data = cal_res.get(cb, {})
-                    t_d = data.get("dateStr") or data.get("date") or data.get("startStr") or data.get("start")
+                    t_d = data.get("dateStr") or data.get("date")
                 elif cb == "eventClick":
                     props = cal_res.get("eventClick", {}).get("event", {}).get("extendedProps", {})
                     if props.get("type") == "summary":
