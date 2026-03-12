@@ -618,18 +618,22 @@ if menu == "ホーム・記録":
                     "firstDay": int((v_dt.dayofweek + 1) % 7),
                     "locale": "ja",
                     "height": cal_height,
-                    "selectable": True,
+                    "selectable": False,
                     "editable": False
                 },
                 custom_css=custom_css,
-                callbacks=['dateClick', 'eventClick'],
+                callbacks=['dateClick', 'eventClick', 'select'],
                 key=f"main_cal_{st.session_state.view_month}_{st.session_state.active_p}"
             )
             if cal_res and "callback" in cal_res:
                 cb = cal_res.get("callback")
                 t_d = None
+                
+                # イベントデータから日付を抽出する統合ロジック
                 if cb == "dateClick":
-                    t_d = cal_res.get("dateClick", {}).get("dateStr")
+                    t_d = cal_res.get("dateClick", {}).get("dateStr") or cal_res.get("dateClick", {}).get("date")
+                elif cb == "select":
+                    t_d = cal_res.get("select", {}).get("startStr") or cal_res.get("select", {}).get("start")
                 elif cb == "eventClick":
                     props = cal_res.get("eventClick", {}).get("event", {}).get("extendedProps", {})
                     if props.get("type") == "summary":
