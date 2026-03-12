@@ -587,6 +587,10 @@ if menu == "ホーム・記録":
                     custom_css += f'.fc-day[data-date="{date_str}"] .fc-daygrid-day-number {{ color: #ff4b4b !important; }}\n'
             except: pass
 
+            # 選択中の日付(tentative_date)をハイライト
+            if st.session_state.get('tentative_date'):
+                custom_css += f'.fc-day[data-date="{st.session_state.tentative_date}"] {{ background: rgba(0, 242, 255, 0.2) !important; border: 2px solid #00f2ff !important; }}\n'
+
             cal_res = calendar(events=events, options={"headerToolbar": False, "initialDate": f"{st.session_state.view_month}-01", "firstDay": int((v_dt.dayofweek + 1) % 7), "locale": "ja", "height": 700, "selectable": True, "editable": False}, custom_css=custom_css, callbacks=['dateClick', 'eventClick', 'select'], key=f"main_cal_{st.session_state.view_month}_{st.session_state.active_p}")
             
             if cal_res and "callback" in cal_res:
@@ -606,10 +610,18 @@ if menu == "ホーム・記録":
                         if dt.tzinfo: dt = dt.tz_convert('Asia/Tokyo')
                         clean_date = dt.strftime("%Y-%m-%d")
                     except: clean_date = str(t_d).split("T")[0]
-                    st.session_state.preview_date = clean_date
-                    st.session_state.selected_cal_date = None
-                    st.session_state.editing_id = None
-                    st.rerun()
+                    
+                    if st.session_state.get('tentative_date') == clean_date:
+                        # 2回目：詳細表示へ
+                        st.session_state.preview_date = clean_date
+                        st.session_state.tentative_date = None
+                        st.session_state.selected_cal_date = None
+                        st.session_state.editing_id = None
+                        st.rerun()
+                    else:
+                        # 1回目：選択ハイライトのみ
+                        st.session_state.tentative_date = clean_date
+                        st.rerun()
 
 # ============================================================
 # 分析
