@@ -596,9 +596,6 @@ if menu == "ホーム・記録":
             if st.session_state.get('tentative_date'):
                 custom_css += f'.fc-day[data-date="{st.session_state.tentative_date}"] {{ background: rgba(0, 242, 255, 0.2) !important; border: 2px solid #00f2ff !important; }}\n'
 
-            # Keyを状況に応じて変えることで、コンポーネント内の古い状態を強制リセットする
-            cal_key = f"cal_{st.session_state.view_month}_{st.session_state.active_p}_{st.session_state.get('tentative_date', 'none')}"
-            
             cal_res = calendar(
                 events=events,
                 options={
@@ -612,7 +609,7 @@ if menu == "ホーム・記録":
                 },
                 custom_css=custom_css,
                 callbacks=['dateClick', 'eventClick'],
-                key=cal_key
+                key=f"main_cal_{st.session_state.view_month}_{st.session_state.active_p}"
             )
             
             if cal_res and "callback" in cal_res:
