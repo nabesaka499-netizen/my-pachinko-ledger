@@ -524,6 +524,25 @@ if menu == "ホーム・記録":
                     if str(k).startswith("main_cal"):
                         del st.session_state[k]
                 st.rerun()
+        
+        # --- [案A] 選択中の日の詳細への誘導ボタンをここに配置 (カレンダーの上) ---
+        if st.session_state.get('tentative_date'):
+            t_date = st.session_state.tentative_date
+            try:
+                display_date = datetime.strptime(t_date, "%Y-%m-%d").strftime("%m/%d")
+            except:
+                display_date = t_date
+            
+            with st.container(border=True):
+                st.markdown(f"### 📍 選択中: {display_date}")
+                if st.button(f"👉 {display_date} の詳細を表示 / 記録を追加", use_container_width=True, type="primary"):
+                    st.session_state.preview_date = t_date
+                    st.session_state.tentative_date = None
+                    st.session_state.selected_cal_date = None
+                    st.session_state.editing_id = None
+                    st.rerun()
+        elif not st.session_state.preview_date:
+            st.info("💡 カレンダーの日付をタップして選択してください。")
 
         # --- PREVIEW SECTION ---
         if p_date:
@@ -600,6 +619,9 @@ if menu == "ホーム・記録":
             # 選択中の日付(tentative_date)をハイライト
             if st.session_state.get('tentative_date'):
                 custom_css += f'.fc-day[data-date="{st.session_state.tentative_date}"] {{ background: rgba(0, 242, 255, 0.2) !important; border: 2px solid #00f2ff !important; }}\n'
+            
+            # プレビュー表示中はカレンダーの高さを少し抑える
+            cal_height = 500 if st.session_state.preview_date else 700
 
             cal_res = calendar(
                 events=events,
@@ -608,7 +630,7 @@ if menu == "ホーム・記録":
                     "initialDate": f"{st.session_state.view_month}-01",
                     "firstDay": int((v_dt.dayofweek + 1) % 7),
                     "locale": "ja",
-                    "height": 700,
+                    "height": cal_height,
                     "selectable": True,
                     "editable": False
                 },
@@ -634,28 +656,12 @@ if menu == "ホーム・記録":
                     except:
                         clean_date = str(t_d).split("T")[0]
                     
-                    # 1クリックで選択状態にする（以前の2段階ロジックは廃止）
-                    st.session_state.tentative_date = clean_date
-                    st.rerun()
+                    # 変更があった場合のみrerun
+                    if st.session_state.get('tentative_date') != clean_date:
+                        st.session_state.tentative_date = clean_date
+                        st.rerun()
 
-            # --- 案A：選択中の日の詳細を表示するボタンを設置 ---
-            if st.session_state.get('tentative_date'):
-                t_date = st.session_state.tentative_date
-                # 日付の表示形式を少し整える (例: 2026-03-13 -> 3/13)
-                try:
-                    display_date = datetime.strptime(t_date, "%Y-%m-%d").strftime("%m/%d")
-                except:
-                    display_date = t_date
-                
-                st.markdown(f"### 📍 選択中: {display_date}")
-                if st.button(f"👉 {display_date} の詳細を表示 / 記録を追加", use_container_width=True, type="primary"):
-                    st.session_state.preview_date = t_date
-                    st.session_state.tentative_date = None # 開いたら選択はクリア
-                    st.session_state.selected_cal_date = None
-                    st.session_state.editing_id = None
-                    st.rerun()
-            else:
-                st.info("カレンダーの日付をタップして選択してください。")
+            # ボタンは上部に移動したため、ここは削除
 
 # ============================================================
 # 分析
