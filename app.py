@@ -607,8 +607,16 @@ if menu == "ホーム・記録":
             try:
                 for d, n in holidays.Japan(years=range(2024, 2027)).items():
                     date_str = d.strftime("%Y-%m-%d")
-                    events.append({"title": n, "start": date_str, "display": "background", "backgroundColor": "#ff4b4b1a"})
-                    custom_css += f'.fc-day[data-date="{date_str}"] .fc-daygrid-day-number {{ color: #ff4b4b !important; }}\n'
+                    # 祝日名：赤色で表示
+                    events.append({
+                        "title": n, 
+                        "start": date_str, 
+                        "backgroundColor": "transparent", 
+                        "borderColor": "transparent", 
+                        "textColor": "#ff4b4b"
+                    })
+                    # 日付：緑色で表示
+                    custom_css += f'.fc-day[data-date="{date_str}"] .fc-daygrid-day-number {{ color: #00ff88 !important; }}\n'
             except: pass
 
             # 選択中の日付(tentative_date)をハイライト
