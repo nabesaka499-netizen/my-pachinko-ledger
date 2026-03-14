@@ -698,88 +698,101 @@ elif menu == "分析 (月別/年別)":
 
         def show_analysis(filter_p):
             if filter_p == "全員":
-                df_v = df.copy()
+                df_base = df.copy()
             else:
-                df_v = df[df['player'].astype(str).str.strip() == filter_p].copy()
+                df_base = df[df['player'].astype(str).str.strip() == filter_p].copy()
 
-            if df_v.empty:
+            if df_base.empty:
                 st.warning("データがありません。")
                 return
 
-            df_v['date_dt'] = pd.to_datetime(df_v['date'])
-            min_date = df_v['date_dt'].min().date()
-            max_date = df_v['date_dt'].max().date()
+            df_base['date_dt'] = pd.to_datetime(df_base['date'])
+            min_date = df_base['date_dt'].min().date()
+            max_date = df_base['date_dt'].max().date()
 
-            col_d1, col_d2 = st.columns(2)
-            with col_d1:
-                start_date = st.date_input(f"{filter_p} - 開始日", min_date, key=f"start_{filter_p}")
-            with col_d2:
-                end_date = st.date_input(f"{filter_p} - 終了日", max_date, key=f"end_{filter_p}")
+            # --- プレースホルダーを使用して表示順序を制御 ---
+            table_container = st.container()
+            summary_container = st.container()
+            total_container = st.container()
+            date_range_picker_container = st.container()
 
-            df_v = df_v[
-                (df_v['date_dt'].dt.date >= start_date) &
-                (df_v['date_dt'].dt.date <= end_date)
-            ]
-            if df_v.empty:
-                st.info("指定された期間のデータはありません。")
-                return
+            # 最下に日付選択を配置（ただし、計算のために初期化だけ先に行う）
+            with date_range_picker_container:
+                st.write("")
+                st.markdown("---")
+                col_d1, col_d2 = st.columns(2)
+                with col_d1:
+                    start_date = st.date_input(f"{filter_p} - 開始日", min_date, key=f"start_{filter_p}")
+                with col_d2:
+                    end_date = st.date_input(f"{filter_p} - 終了日", max_date, key=f"end_{filter_p}")
 
-            t_bal = df_v['balance'].sum()
-            t_hours = df_v['hours'].sum()
-            h_ly = t_bal / t_hours if t_hours > 0 else 0
+            # フィルタリング適用
+            df_v = df_base[
+                (df_base['date_dt'].dt.date >= start_date) &
+                (df_base['date_dt'].dt.date <= end_date)
+            ].copy()
 
-            mc1, mc2, mc3 = st.columns(3)
-            mc1.metric("トータル収支", f"¥{int(t_bal):,}")
-            mc2.metric("合計稼働時間", f"{t_hours:.1f}h")
-            mc3.metric("平均時給", f"¥{int(h_ly):,}")
+            # 1. 月別・年別の詳細表 (最上部)
+            with table_container:
+                if df_v.empty:
+                    st.info("指定された期間のデータはありません。")
+                else:
+                    df_v['year'] = df_v['date_dt'].dt.year
+                    df_v['month'] = df_v['date_dt'].dt.strftime('%Y/%m')
 
-            st.markdown("#### 直近サマリー (全期間から算出)")
-            p_cols = st.columns(4)
-            now_dt = pd.Timestamp.now()
+                    v_type = st.radio(f"{filter_p} - 表示単位", ["月別", "年別"],
+                                       horizontal=True, key=f"v_type_{filter_p}")
+                    g_col = 'month' if v_type == "月別" else 'year'
 
-            if filter_p == "全員":
-                df_recent_base = df.copy()
-            else:
-                df_recent_base = df[df['player'].astype(str).str.strip() == filter_p].copy()
-            df_recent_base['date_dt'] = pd.to_datetime(df_recent_base['date'])
+                    import numpy as np
+                    summ = df_v.groupby(g_col).agg({'balance': 'sum', 'hours': 'sum'}).sort_index(ascending=False)
+                    summ['balance'] = summ['balance'].astype(int)
+                    summ['時給'] = (summ['balance'] / summ['hours'].replace(0, np.nan)).fillna(0).astype(int)
 
-            for i, months in enumerate([3, 6, 9, 12]):
-                start_p = now_dt - pd.DateOffset(months=months)
-                label = f"{months}ヶ月" if months < 12 else "1年"
-                df_p = df_recent_base[df_recent_base['date_dt'] >= start_p]
+                    st.dataframe(summ.style.format({
+                        'balance': '¥{:,}',
+                        'hours': '{:.1f}h',
+                        '時給': '¥{:,}'
+                    }), use_container_width=True)
 
-                p_bal = df_p['balance'].sum()
-                p_hours = df_p['hours'].sum()
-                p_hourly = p_bal / p_hours if p_hours > 0 else 0
+            # 2. 直近サマリー
+            with summary_container:
+                st.markdown("#### ✨ 直近サマリー (全期間から算出)")
+                p_recent_cols = st.columns(4)
+                now_dt = pd.Timestamp.now()
 
-                with p_cols[i]:
-                    st.markdown(f"""
-                    <div style="padding:10px; border:1px solid rgba(0,242,255,0.2);
-                                border-radius:10px; background:rgba(0,242,255,0.05); text-align:center;">
-                        <div style="font-weight:bold; color:#00f2ff; font-size:0.9em;">直近{label}</div>
-                        <div style="font-size:1.1em; font-weight:bold; margin:5px 0;">¥{int(p_bal):,}</div>
-                        <div style="font-size:0.8em; opacity:0.8;">{p_hours:.1f}h | ¥{int(p_hourly):,}/h</div>
-                    </div>
-                    """, unsafe_allow_html=True)
+                for i, months in enumerate([3, 6, 9, 12]):
+                    start_p = now_dt - pd.DateOffset(months=months)
+                    label = f"{months}ヶ月" if months < 12 else "1年"
+                    df_p = df_base[df_base['date_dt'] >= start_p]
 
-            st.write("")
-            df_v['year'] = df_v['date_dt'].dt.year
-            df_v['month'] = df_v['date_dt'].dt.strftime('%Y/%m')
+                    p_bal_recent = df_p['balance'].sum()
+                    p_hours_recent = df_p['hours'].sum()
+                    p_hourly_recent = p_bal_recent / p_hours_recent if p_hours_recent > 0 else 0
 
-            v_type = st.radio(f"{filter_p} - 表示単位", ["月別", "年別"],
-                               horizontal=True, key=f"v_type_{filter_p}")
-            g_col = 'month' if v_type == "月別" else 'year'
+                    with p_recent_cols[i]:
+                        st.markdown(f"""
+                        <div style="padding:10px; border:1px solid rgba(0,242,255,0.2);
+                                    border-radius:10px; background:rgba(0,242,255,0.05); text-align:center;">
+                            <div style="font-weight:bold; color:#00f2ff; font-size:0.9em;">直近{label}</div>
+                            <div style="font-size:1.1em; font-weight:bold; margin:5px 0;">¥{int(p_bal_recent):,}</div>
+                            <div style="font-size:0.8em; opacity:0.8;">{p_hours_recent:.1f}h | ¥{int(p_hourly_recent):,}/h</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                st.write("")
 
-            import numpy as np
-            summ = df_v.groupby(g_col).agg({'balance': 'sum', 'hours': 'sum'}).sort_index(ascending=False)
-            summ['balance'] = summ['balance'].astype(int)
-            summ['時給'] = (summ['balance'] / summ['hours'].replace(0, np.nan)).fillna(0).astype(int)
+            # 3. トータル収支
+            with total_container:
+                if not df_v.empty:
+                    t_bal = df_v['balance'].sum()
+                    t_hours = df_v['hours'].sum()
+                    h_ly = t_bal / t_hours if t_hours > 0 else 0
 
-            st.dataframe(summ.style.format({
-                'balance': '¥{:,}',
-                'hours': '{:.1f}h',
-                '時給': '¥{:,}'
-            }), use_container_width=True)
+                    mc1, mc2, mc3 = st.columns(3)
+                    # ユーザー要望の「トータル収支」名称に合わせて、フィルタリング後であることを明記
+                    mc1.metric("トータル収支 (指定期間)", f"¥{int(t_bal):,}")
+                    mc2.metric("合計稼働時間", f"{t_hours:.1f}h")
+                    mc3.metric("平均時給", f"¥{int(h_ly):,}")
 
         with tab_p1:
             show_analysis("Player 1")
