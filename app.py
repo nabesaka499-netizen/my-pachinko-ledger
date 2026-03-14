@@ -567,7 +567,7 @@ if menu == "ホーム・記録":
                             st.session_state.preview_date = None
                             st.rerun()
                         if btn_col2.button("🗑️", key=f"del_{row['id']}", type="primary", use_container_width=True):
-                            if row['player'].astype(str).str.strip() == st.session_state.active_p:
+                            if str(row['player']).strip() == st.session_state.active_p:
                                 df = df[df['id'] != row['id']]
                                 save_data(df)
                                 st.success("削除しました。")
