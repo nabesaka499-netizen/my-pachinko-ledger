@@ -594,7 +594,7 @@ if menu == "ホーム・記録":
             st.date_input("日付を選択して記録", datetime.now(JST), key="tmp_d", on_change=lambda: st.session_state.update({"selected_cal_date": st.session_state.tmp_d.strftime("%Y-%m-%d")}))
         else:
             events = []
-            custom_css = ".fc-daygrid-day-number, .fc-toolbar-title { color: #00f2ff !important; } .fc-daygrid-day { cursor: pointer; } .fc-col-header-cell-cushion { cursor: default; } .fc-day-sat .fc-col-header-cell-cushion, .fc-day-sat .fc-daygrid-day-number { color: #4b8bff !important; } .fc-day-sun .fc-col-header-cell-cushion, .fc-day-sun .fc-daygrid-day-number { color: #ff4b4b !important; } .fc-event { border: none !important; background: transparent !important; } .fc-event-main { padding: 0 !important; text-align: center; } .fc-event-title { white-space: pre-wrap !important; word-wrap: break-word !important; font-size: clamp(0.6rem, 2.5vw, 0.9rem) !important; line-height: 1.1 !important; letter-spacing: -0.5px !important; } .fc-day-today { background: transparent !important; }"
+            custom_css = ".fc-daygrid-day-number, .fc-toolbar-title { color: #00f2ff !important; } .fc-daygrid-day { cursor: pointer; } .fc-col-header-cell-cushion { cursor: default; } .fc-day-sat .fc-col-header-cell-cushion, .fc-day-sat .fc-daygrid-day-number { color: #4b8bff !important; } .fc-day-sun .fc-col-header-cell-cushion, .fc-day-sun .fc-daygrid-day-number { color: #ff4b4b !important; } .fc-event { border: none !important; background: transparent !important; } .fc-event-main { padding: 0 !important; text-align: center; } .fc-event-title { white-space: pre-wrap !important; word-wrap: break-word !important; font-size: clamp(0.6rem, 2.5vw, 0.9rem) !important; line-height: 1.1 !important; letter-spacing: -0.5px !important; } .fc-day-today { background: transparent !important; } .holiday-label .fc-event-main { text-align: left !important; padding-left: 2px !important; } .holiday-label .fc-event-title { font-size: 0.7rem !important; font-weight: normal !important; opacity: 0.9 !important; }"
             
             if not df.empty:
                 cal_df = df[df['player'].astype(str).str.strip() == st.session_state.active_p].copy()
@@ -613,7 +613,8 @@ if menu == "ホーム・記録":
                         "start": date_str, 
                         "backgroundColor": "transparent", 
                         "borderColor": "transparent", 
-                        "textColor": "#ff4b4b"
+                        "textColor": "#ff4b4b",
+                        "className": "holiday-label"
                     })
                     # 日付：緑色で表示
                     custom_css += f'.fc-day[data-date="{date_str}"] .fc-daygrid-day-number {{ color: #00ff88 !important; }}\n'
