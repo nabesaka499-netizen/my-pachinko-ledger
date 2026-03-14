@@ -516,7 +516,15 @@ if menu == "ホーム・記録":
                         del st.session_state[k]
                 st.rerun()
         with nav_c2:
-            st.markdown(f"<h3 style='text-align: center; color: #00f2ff; margin-top: 0;'>{v_dt.strftime('%Y年%m月')}</h3>", unsafe_allow_html=True)
+            sign = "+" if p_bal > 0 else ""
+            bal_color = "#00f2ff" if p_bal >= 0 else "#ff4b4b"
+            bal_text = f"{sign}{int(p_bal):,}円"
+            st.markdown(
+                f"<h3 style='text-align: center; color: #00f2ff; margin-top: 0;'>"
+                f"{v_dt.strftime('%Y年%m月')} <span style='color: {bal_color}; margin-left: 20px;'>{bal_text}</span>"
+                f"</h3>", 
+                unsafe_allow_html=True
+            )
         with nav_c3:
             if st.button("次月 ▶", use_container_width=True):
                 st.session_state.view_month = (v_dt + pd.DateOffset(months=1)).strftime("%Y-%m")
